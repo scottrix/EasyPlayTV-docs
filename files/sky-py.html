@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>sky.py — EasyPlayTV docs</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="../assets/style.css">
+<script src="../assets/nav.js" defer></script>
+</head>
+<body data-page="sky-py">
+<a class="skip-link" href="#main">Skip to content</a>
+<div class="layout">
+<nav class="sidebar"></nav>
+<main id="main">
+<div class="crumbs"><a href="../index.html">Home</a> <span class="sep">/</span> Files <span class="sep">/</span> sky.py</div>
+<h1>resources/lib/sky.py <small>— Sky News live resolver</small></h1>
+
+<div class="file-meta">
+<span><strong>Path</strong> <code>/resources/lib/sky.py</code></span>
+<span><strong>Lines</strong> 64</span>
+<span><strong>Type</strong> playback resolver (DASH + Widevine optional)</span>
+<span><strong>← called by</strong> <a href="default-py.html">default.py:_resolve_channel</a> (only for the Sky News channel)</span>
+<span><strong>→ calls</strong> news.sky.com HTML scrape + Brightcove Playback API, <a href="init-py.html">setup_dash_item</a></span>
+</div>
+
+<h2>Role</h2>
+<p>Resolves the single live Sky News stream. No catalog (it's a
+single-channel entry in <code>CUTV_UK_CHANNELS</code>). Sky News uses
+Brightcove as its video backend, so the resolver sequence is the
+Brightcove-standard: scrape account/player/video-id from the page,
+extract a policy key from Brightcove's player JS, then call the
+Brightcove Playback API with that policy key to receive the list of
+manifests.</p>
+
+<h2>Constants</h2>
+<div class="fn">
+<span class="fn-sig">URL_LIVE = "https://news.sky.com/watch-live" · URL_POLICY_KEY = "https://players.brightcove.net/<account>/<player>_default/index.min.js" · URL_PLAYBACK = "https://edge.api.brightcove.com/playback/v1/accounts/<account>/videos/<ID>" · lines 7-9</span>
+<p>The three Brightcove endpoint roots.</p>
+</div>
+<div class="fn">
+<span class="fn-sig">GENERIC_HEADERS = {"User-Agent": ""} · line 11</span>
+<p>Empty UA placeholder — filled at runtime with
+<a href="init-py.html"><code>get_ua()</code></a>.</p>
+</div>
+
+<h2>Resolver</h2>
+<div class="fn">
+<span class="fn-sig">resolve(listitem) · line 14</span>
+<p>Note the signature: no <code>item_id</code> argument — there's only one
+Sky News stream. Steps:</p>
+<ol>
+<li>Fetch <code>watch-live</code> and regex-match the
+<code><div class="ui-video-player" ...></code> element. This is the
+container for all the Brightcove data-attributes.</li>
+<li>From the div tag, extract
+<code>data-account-id</code>, <code>data-player-id</code>, and
+<code>data-video-id</code>. Raises "Sky: missing Brightcove data
+attributes" if any are absent.</li>
+<li>Treat the video id as a Brightcove <em>reference id</em> by prefixing
+<code>"ref:"</code> — Sky's video is referenced by a stable string like
+<code>"skynews-live-uk"</code>, not by Brightcove's numeric id.</li>
+<li>Fetch the player JS bundle from Brightcove and regex-extract the
+<code>policyKey:"…"</code> — this is the JWT-style token used by the
+Playback API auth. Raises "Sky: policy key not found" if missing.</li>
+<li>Build the Playback API request with two non-obvious headers:</li>
+<li style="margin-left:2em">a. <code>Accept: application/json;pk=<policyKey></code>
+— the policy key goes <em>in the Accept header</em>, not in
+Authorization. This is Brightcove's idiom.</li>
+<li style="margin-left:2em">b. <code>X-Forwarded-For: 2.97.0.0</code> —
+a UK IP spoofed into the request, because Brightcove geofences by
+requesting IP and our scraping host may not be in the UK (OSMC running
+outside UK in test setups). 2.97.0.0 is a Sky-class A block, so
+geofencing sees it as UK.</li>
+<li>Parse the Playback response — iterate <code>sources</code>, prefer
+DASH with Widevine (<code>key_systems"</code>["com.widevine.alpha"]["license_url"]</code>),
+fall back to clear DASH or HLS.</li>
+<li>Hand to <a href="init-py.html"><code>setup_dash_item</code></a> with
+the license URL only if Widevine path was used.</li>
+</ol>
+
+<div class="callout warn"><span class="callout-title">X-Forwarded-For spoofing is brittle and per-policy</span>
+<p>Brightcove's policy key is bound to a Sky-defined policy that may or
+may not trust the <code>X-Forwarded-For</code> header. If Sky rotate to
+a policy that ignores forwarded IPs (most modern CDN policies do), this
+resolver would start returning AU/US Clear manifest URLs that don't play
+on a UK Kodi box. The RBI fallback doesn't exist for this provider —
+the addon doesn't include a UK-IP egress path. If you start seeing
+"this content is not available in your region" failures for Sky News,
+check the XFF header behavior first.</p>
+</div>
+
+<footer class="site">
+<span>← Previous: <a href="blaze-py.html">blaze.py</a></span>
+<span>Next: <a href="c4-py.html">c4.py</a> →</span>
+</footer>
+</main>
+</div>
+</body>
+</html>

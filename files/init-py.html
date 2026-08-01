@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>__init__.py — EasyPlayTV docs</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="../assets/style.css">
+<script src="../assets/nav.js" defer></script>
+</head>
+<body data-page="init-py">
+<a class="skip-link" href="#main">Skip to content</a>
+<div class="layout">
+<nav class="sidebar"></nav>
+<main id="main">
+<div class="crumbs"><a href="../index.html">Home</a> <span class="sep">/</span> Files <span class="sep">/</span> __init__.py</div>
+<h1>resources/lib/__init__.py <small>— shared helpers</small></h1>
+
+<div class="file-meta">
+<span><strong>Path</strong> <code>/resources/lib/__init__.py</code></span>
+<span><strong>Lines</strong> 112</span>
+<span><strong>Type</strong> shared helpers (no Kodi entry point)</span>
+<span><strong>← imported by</strong> every other module (plugin + service)</span>
+</div>
+
+<h2>Role</h2>
+<p>The companion module that makes <code>from resources.lib import <fn></code>
+work. Holds the cross-module constants (<code>INPUTSTREAM_PROP</code>,
+<code>INPUTSTREAM_ADDON</code>), the cached provider-map loader, the DASH
+listitem configurator, and a couple of small utility functions used
+everywhere.</p>
+
+<h2>Constants</h2>
+
+<div class="fn">
+<span class="fn-sig">INPUTSTREAM_PROP = "inputstream" · INPUTSTREAM_ADDON = "inputstream.adaptive"</span>
+<p>The Kodi listitem property name and the addon ID of the
+<code>inputstream.adaptive</code> addon. Used by
+<a href="init-py.html"><code>setup_dash_item()</code></a> on every playable
+item; never re-string these in provider code.</p>
+</div>
+
+<div class="fn">
+<span class="fn-sig">_ADDON · _PROFILE · _PROVIDER_MAP_FILE · lines 11–13</span>
+<p>Cached <code>xbmcaddon.Addon("plugin.video.easyplaytv")</code>, its writable
+profile directory, and the path to <code>provider_map.json</code> inside
+that profile. Used by <code>load/save_provider_map()</code>.</p>
+</div>
+
+<h2>Provider-map persistence</h2>
+
+<div class="fn">
+<span class="fn-sig">load_provider_map() -> dict · line 19</span>
+<p>Reads <code>provider_map.json</code> from the addon profile dir. Caches
+the result in module globals keyed on the file's mtime — re-reads only if
+the file has been touched. Returns <code>{}</code> on any error, never raises.</p>
+<p>The map's shape is <code>{safe_title: {provider, f_name|pid|slug, ...}}</code>
+and is used by <a href="library_sync-py.html"><code>library_sync.prefix_existing_tvshows()</code></a>
+to retrofit the <code>[PROVIDER]</code> prefix onto rows that were created
+before the prefix convention existed.</p>
+</div>
+
+<div class="fn">
+<span class="fn-sig">save_provider_map(pmap) · line 37</span>
+<p>Writes the map atomically (json.dump) and refreshes the in-memory cache.
+Silently swallows errors — losing the map is recoverable on the next sync.</p>
+</div>
+
+<h2>Utilities</h2>
+
+<div class="fn">
+<span class="fn-sig">safe_filename(name) -> str · line 47</span>
+<p>Replaces <code>/ \\ : * ? " < > |</code> with spaces and strips.
+Used everywhere a Kodi-show title is going to become a folder name or a
+<code>file</code> table row's <code>strFilename</code>.</p>
+</div>
+
+<div class="fn">
+<span class="fn-sig">fetch_url(url, user_agent=None) -> str · line 53</span>
+<p>The shared HTTP GET used by every scraper module. Sends
+<code>Accept-Encoding: gzip, deflate</code>, decompresses gzip transparently
+if the server used it. Returns a UTF-8 string (with <code>errors="ignore"</code>
+so encoding sniffing never breaks a fetch). Used by BBC, ITVX, C4, STV,
+Blaze scrapers.</p>
+<div class="callout warn"><span class="callout-title">This is NOT a persistent session</span>
+<p>Each call opens a fresh <code>urllib.request.urlopen</code> with no cookie
+jar. Provider modules that need cookies (ITVX auth, My5 corona) manage their
+own <code>requests.Session</code> or <code>http.cookiejar</code> — see
+<a href="itvx-py.html"><code>itvx.py</code></a> for the only example.</p>
+</div>
+</div>
+
+<div class="fn">
+<span class="fn-sig">is_inputstream_available() -> bool · line 63</span>
+<p>Returns <code>System.HasAddon(inputstream.adaptive)</code> via Kodi's
+condition visibility. Used by <a href="default-py.html"><code>default.py:resolve_live</code></a>
+as a sanity check before attempting DASH playback (the resolver still
+short-circuits with a notification dialog if the addon's missing).</p>
+</div>
+
+<div class="fn">
+<span class="fn-sig">get_max_resolution() -> "WxH" | None · line 69</span>
+<p>Reads the <code>max_resolution</code> addon setting (0/480/720/1080) and
+returns a Kodi <code>inputstream.adaptive.chooser_resolution_max</code> value
+or <code>None</code> for "no cap". Used by
+<code>setup_dash_item()</code> so the user's cap is enforced on every DASH
+manifest without each provider having to read the setting itself.</p>
+</div>
+
+<h2>setup_dash_item — the DASH configurator</h2>
+
+<div class="fn">
+<span class="fn-sig">setup_dash_item(listitem, manifest_url, license_url=None, license_headers=None, license_payload=None, manifest_headers=None, stream_headers=None, manifest_type=None, timeshift=False, max_resolution=None) · line 82</span>
+<p>The workhorse. Sets every <code>inputstream.adaptive</code> listitem
+property in the right shape for Kodi to hand off to the adaptive addon:</p>
+<ul>
+<li><code>IsPlayable=true</code> · <code>inputstream=inputstream.adaptive</code></li>
+<li>Resolution cap via <code>get_max_resolution()</code> unless caller overrides with <code>max_resolution=</code></li>
+<li>If <code>license_url</code> is set: <code>license_type=com.widevine.alpha</code>
++ a pipe-delimited <code>license_key</code> tuple assembled as
+<code>license_url | license_headers | (license_payload or "R{SSM}") | (license_payload and "JBlicense" or "R")</code>.
+The two terminal tokens tell IA whether to POST the payload as-is
+(<code>JBlicense</code>) or to use a raw challenge response (<code>R</code>).</li>
+<li>Pass-through headers for manifest / stream fetches (e.g. STV's
+<code>stv-drm: true</code> header, ITVX's <code>Authorization: Bearer …</code>).</li>
+<li><code>play_timeshift_buffer=true</code> when caller requests
+<code>timeshift=True</code> (used by live channels that expose a rewind buffer).</li>
+<li><code>listitem.setPath(manifest_url)</code> as the final step.</li>
+</ul>
+
+<div class="callout warn"><span class="callout-title">Order matters</span>
+<p>The resolution cap is set <em>before</em> the license fields — IA reads the
+<code>chooser_resolution_max</code> property at directory-list-build time,
+before it opens the manifest, so setting it after the license key has no
+effect. Don't reorder.</p>
+</div>
+
+<div class="callout warn"><span class="callout-title">License payload format</span>
+<p>When <code>license_payload</code> is provided (My5 Cassie case — see
+<a href="my5-py.html"><code>my5.py</code></a>) the trailing token is
+<code>JBlicense</code>, meaning the payload is sent verbatim as the body.
+Without it, the trailing token is <code>R</code> and IA uses the
+<code>{SSM}</code> placeholder to substitute the Widevine service
+certificate into the request body. C4 and ITVX use the placeholder paths;
+My5 is the only one that pre-builds a payload.</p>
+</div>
+</div>
+
+<h2>Follower/master detection</h2>
+
+<div class="fn">
+<span class="fn-sig">is_master() -> bool · line 107</span>
+<p>Returns <code>_ADDON.getSettingInt("db_source") == 0</code>. Used by
+<a href="service-py.html"><code>service.py</code></a> to decide whether to
+schedule syncs (master) or skip them (follower). Also used by
+<a href="library_sync-py.html"><code>library_sync.sync_provider</code></a>
+as a defensive guard.</p>
+</div>
+
+<h2>get_ua — the shared User-Agent</h2>
+
+<div class="fn">
+<span class="fn-sig">get_ua() -> str · line 111</span>
+<p>One Chrome 131 on Win64 UA string used by every scraper via
+<code>fetch_url(url)</code>. Hard-coded rather than read from a setting
+because some providers (notably C4) UA-sniff and reject Roku/Android
+strings — keeping it desktop-Chrome-shaped avoids the sniff without
+exposing a knob.</p>
+</div>
+
+<footer class="site">
+<span>← Previous: <a href="service-py.html">service.py</a></span>
+<span>Next: <a href="genres-py.html">genres.py</a> →</span>
+</footer>
+</main>
+</div>
+</body>
+</html>

@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>bbc_vod.py — EasyPlayTV docs</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="../assets/style.css">
+<script src="../assets/nav.js" defer></script>
+</head>
+<body data-page="bbc_vod-py">
+<a class="skip-link" href="#main">Skip to content</a>
+<div class="layout">
+<nav class="sidebar"></nav>
+<main id="main">
+<div class="crumbs"><a href="../index.html">Home</a> <span class="sep">/</span> Files <span class="sep">/</span> bbc_vod.py</div>
+<h1>resources/lib/bbc_vod.py <small>— BBC iPlayer catalogue</small></h1>
+
+<div class="file-meta">
+<span><strong>Path</strong> <code>/resources/lib/bbc_vod.py</code></span>
+<span><strong>Lines</strong> 182</span>
+<span><strong>Type</strong> catalogue scraper (HTML + redux-state JSON)</span>
+<span><strong>← called by</strong> <a href="strm-py.html">strm._fetch_movies/_fetch_series_shows</a>, <a href="library_sync-py.html">library_sync</a> (sync episode fetch), <a href="default-py.html">default.py:list_vod_bbc_seasons</a></span>
+<span><strong>→ calls</strong> bbc.co.uk iplayer HTML pages</span>
+</div>
+
+<h2>Role</h2>
+<p>Scrapes BBC's iPlayer category/episode pages. Each iPlayer HTML page
+embeds a JSON blob in <code>window.__IPLAYER_REDUX_STATE__</code>
+(the same data property their React app builds on); we parse that JSON
+directly and turn it into the addon's house dict shape.</p>
+
+<h2>Constants</h2>
+<div class="fn">
+<span class="fn-sig">BASE_URL = "https://www.bbc.co.uk/iplayer" · line 4</span>
+<p>Root of all iPlayer pages.</p>
+</div>
+<div class="fn">
+<span class="fn-sig">CATEGORIES = [("films","Films"), ("drama-and-soaps","Drama & Soaps"), …] · lines 6-21</span>
+<p>14 paired slugs/labels. Slugs are BBC's own URL components; labels are
+display strings. Cross-referenced by <a href="genres-py.html">genres.py</a>'s
+UNIFIED_GENRES map so the addon's "Drama" tile pulls BBC's
+<code>drama-and-soaps</code> slug.</p>
+</div>
+<div class="fn">
+<span class="fn-sig">IMG_RECIPE_THUMB = "320x180" · IMG_RECIPE_FANART = "1920x1080" · lines 23-24</span>
+<p>BBC's image URLs have <code>{recipe}</code> placeholders for size selection;
+these are the two recipes we substitute.</p>
+</div>
+<div class="fn">
+<span class="fn-sig">REDUX_RE = re.compile(r'window\.__IPLAYER_REDUX_STATE__\s*=\s*({.*?});\s*</script>') · line 26</span>
+<p>Matches the inline JSON object that powers iPlayer's own UI. Same regex
+as <a href="bbc-py.html">bbc.py:_get_vpid</a>; duplicated because both modules
+scrape the same JSON — the/<code>..</code> BBC scraper is just one-stop.</p>
+</div>
+
+<h2>Helpers</h2>
+<div class="fn">
+<span class="fn-sig">_fetch_html(url) · line 32</span>
+<p>Standard gzip-aware HTML fetch with iPlayer's standard HTML accept
+headers.</p>
+</div>
+<div class="fn">
+<span class="fn-sig">_extract_redux(html) → dict | None · line 47</span>
+<p>Searches the page for the REDUX_RE regex, <code>json.loads</code> the
+blob. Returns <code>None</code> on no match.</p>
+</div>
+<div class="fn">
+<span class="fn-sig">_img_url(template, recipe) · line 54</span>
+<p>Substitutes <code>{recipe}</code> in a BBC image template with one of
+<em>"320x180"</em> / <em>"1920x1080"</em>.</p>
+</div>
+
+<h2>Listing functions</h2>
+<div class="fn">
+<span class="fn-sig">list_categories() · line 58</span>
+<p>Returns 14 <code>{id, title}</code> dicts from the hardcoded CATEGORIES —
+doesn't hit the network.</p>
+</div>
+<div class="fn">
+<span class="fn-sig">list_shows(category_id, page=1) → tuple[shows, total_pages, cur_page] · line 62</span>
+<p>Fetches <code>https://www.bbc.co.uk/iplayer/categories/<ID>/all?page=<N></code>,
+extracts the redux state, walks <code>state["categories"]["elements"]</code>.
+Each show dict has the standard addon shape
+(<code>id, title, image, description, episode_id, standalone, f_name</code>).
+Notably <code>standalone</code> is set for single-programme shows (films,
+one-off documentaries) so the sync layer knows whether to fetch seasons.
+Returns <code>(shows, total_pages, cur_page)</code> for the pagination
+loop in <a href="strm-py.html"><code>strm._fetch_movies</code></a>.</p>
+</div>
+<div class="fn">
+<span class="fn-sig">list_seasons(pid) · line 108</span>
+<p>Fetches the episode page at
+<code>https://www.bbc.co.uk/iplayer/episode/<PID></code>, parses redux
+state, returns the <code>state["series"</code> list — each season has
+a <code>series_id</code> and a <code>title</code>. <strong>Care:</strong>
+a BBC "pid" in this context is the show pid, not an individual episode's
+pid. Confusingly the same name is used in <code>bbc.py:_get_vpid</code>
+for the per-episode version id.</p>
+</div>
+<div class="fn">
+<span class="fn-sig">list_episodes(pid, page=1, series_id=None) · line 147</span>
+<p>Fetches the per-show episodes-page (URL parameters vary if
+<code>series_id</code> is set: BBC supports a per-series filter).
+Returns the same tuple shape as <code>list_shows</code>. The returned
+episode dicts include <code>episode_id</code> (the episode pid used by
+<a href="bbc-py.html">bbc.resolve_vod</a>) and
+<code>subtitle</code> (the human-readable series+episode subtitle used by
+<a href="strm-py.html">strm._bbc_ep_title</a> to build a nice display
+title).</p>
+</div>
+
+<footer class="site">
+<span>← Previous: <a href="itvx-py.html">itvx.py</a></span>
+<span>Next: <a href="itvx_vod-py.html">itvx_vod.py</a> →</span>
+</footer>
+</main>
+</div>
+</body>
+</html>

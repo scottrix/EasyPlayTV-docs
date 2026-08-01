@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>itvx.py — EasyPlayTV docs</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="../assets/style.css">
+<script src="../assets/nav.js" defer></script>
+</head>
+<body data-page="itvx-py">
+<a class="skip-link" href="#main">Skip to content</a>
+<div class="layout">
+<nav class="sidebar"></nav>
+<main id="main">
+<div class="crumbs"><a href="../index.html">Home</a> <span class="sep">/</span> Files <span class="sep">/</span> itvx.py</div>
+<h1>resources/lib/itvx.py <small>— ITVX auth + live/VOD resolver</small></h1>
+
+<div class="file-meta">
+<span><strong>Path</strong> <code>/resources/lib/itvx.py</code></span>
+<span><strong>Lines</strong> 410</span>
+<span><strong>Type</strong> OAuth client + playback resolver (DASH + Widevine)</span>
+<span><strong>← called by</strong> <a href="default-py.html">default.py:_resolve_channel</a>, <a href="default-py.html">default.py:_resolve_vod</a>, <code>?action=itvx_login/logout</code></span>
+<span><strong>→ calls</strong> ITV auth.prd.user.itv.com OAuth, magni.itv.com playlist API, <a href="init-py.html">setup_dash_item</a></span>
+</div>
+
+<h2>Role</h2>
+<p>ITVX is the only addon provider that <em>requires</em> an account.
+This module handles OAuth password-grant auth (with refresh-token
+lifecycle), sticks the resulting JWT into Bearer headers, then uses it
+to call ITV's "magni" playlist API for both live simulcast and on-demand
+playlists.</p>
+
+<h2>ITVX auth constants</h2>
+<div class="fn">
+<span class="fn-sig">AUTH_URL = "https://auth.prd.user.itv.com/v2/auth" · REFRESH_URL = "https://auth.prd.user.itv.com/token" · SIMULCAST_URL = "https://simulcast.itv.com/playlist/itvonline/<channel>" · VOD_URL = "https://magni.itv.com/playlist/itvonline/ITV/<production_id>" · lines 16-19, 228</span>
+<p>Five different ITV-hosted endpoints:</p>
+<ul>
+<li><code>AUTH_URL</code> — initial password grant (POST).</li>
+<li><code>REFRESH_URL</code> — refresh-token exchange (GET with
+<code>?refresh=<refresh_token></code>).</li>
+<li><code>SIMULCAST_URL</code> — live channel playlist (POST with
+WEB_REQ_DATA).</li>
+<li><code>VOD_URL</code> — VOD programme playlist (POST with
+VOD_REQ_DATA). VOD endpoint is on a different host than the live one:
+<code>magni.itv.com</code> vs. <code>simulcast.itv.com</code>.</li>
+</ul>
+</div>
+<div class="fn">
+<span class="fn-sig">SESSION_FILE = <addon_profile>/itv_session · line 21</span>
+<p>One JSON file holds itv_session (access + refresh JWTs), an Itv.Session
+cookie string, and a <code>refreshed</code> timestamp.</p>
+</div>
+<div class="fn">
+<span class="fn-sig">WEB_REQ_DATA · VOD_REQ_DATA · lines 33-52, 231-250</span>
+<p>Static device description payloads POSTed to the playlist URLs.
+Note the differences:</p>
+<ul>
+<li>WEB_REQ_DATA is for live simulcast — uses <em>"platformTag": "dotcom"</em>
+and <em>"featureset": {"min": ["mpeg-dash", "widevine"], "max": ["hd",
+"mpeg-dash", "widevine", "inband-webvtt"]}</em>.</li>
+<li>VOD_REQ_DATA uses <em>"platformTag": "ctv"</em> (connected-TV — appears
+to yield higher-bitrate variants), and a flat <em>"featureset": ["mpeg-dash",
+"widevine", "outband-webvtt", "hd", "single-track"]</em>.</li>
+</ul>
+</div>
+<div class="fn">
+<span class="fn-sig">UA = "Mozilla/5.0 (X11; Linux x86_64; rv:131.0) Gecko/20100101 Firefox/131.0" · line 56</span>
+<p>Hardcoded Firefox/Linux UA for ITVX playlist calls only — different
+from the shared
+<a href="init-py.html"><code>get_ua()</code></a> desktop-Chrome UA.
+ITVX sniffs UA and rejects things that look Roku-shaped; Firefox 131 is
+what their own web player uses, so we mimic exactly.</p>
+</div>
+
+<h2>Session management</h2>
+<div class="fn">
+<span class="fn-sig">_decode_jwt_payload(token) · line 96 · _is_token_expired(token, margin=1800) · _is_refresh_expired(token) · lines 111, 117</span>
+<p>JWT base64-payload decoder. Token expiry check allows a 30-min margin
+(<code>margin=1800</code>) so we refresh before the actual expiration.
+Refresh-token expiry uses a 1-day margin (<code>exp - 86400</code>).</p>
+</div>
+<div class="fn">
+<span class="fn-sig">_get_access_token() · line 123</span>
+<p>The session-state machine. Steps:</p>
+<ol>
+<li>Load the session file. If no access/refresh token, return "".</li>
+<li>If refresh-token expired → log warning, return "". User must
+re-login via <code>?action=itvx_login</code>.</li>
+<li>If access-token expired → call <code>_refresh_session()</code> to get
+a new one. Reload from disk.</li>
+<li><strong>Proactive 4h refresh:</strong> if the session was last
+refreshed > 4h ago (line 140), refresh again regardless of JWT expiry.
+This catches the case where ITV silently invalidates older refreshes
+before the JWT exp claim.</li>
+</ol>
+</div>
+<div class="fn">
+<span class="fn-sig">_refresh_session() · line 149</span>
+<p>Refreshes via <code>REFRESH_URL + ?refresh=<token></code>. On success
+updates the session file, the refreshed timestamp, and re-builds the
+<em>Itv.Session</em> sticky cookie (line 92's
+<code>_build_cookie</code> wraps the tokens in a <code>{"sticky": true,
+"tokens": {"content": …}}</code> blob). Cookies stored alongside in the
+session file for <a href="itvx_vod-py.html"><code>itvx_vod.py</code></a>'s
+catalogue fetches.</p>
+</div>
+<div class="fn">
+<span class="fn-sig">login(email=None, password=None) · line 176</span>
+<p>Initial login. Reads <code>itvx_email</code> / <code>itvx_password</code>
+addon settings if not supplied. POSTs to AUTH_URL with the
+<code>password</code> grant_type (NOT the cookies-based OAuth code flow
+that the website uses — ITV's API directly accepts password grant for the
+<em>app.10ft.itv.com</em> "Origin" the resolver sends in
+<code>AUTH_HEADERS</code>).</p>
+<p>On 400 → "invalid email or password" notification; 403 → "forbidden,
+try again later" (rate-limit); other → "HTTP N" generic. On success
+extracts the user nickname from the JWT payload
+(<code>_decode_jwt_payload(...).get("name", "")</code>) and notifies
+<em>"ITVX signed in as <nickname>"</em>.</p>
+</div>
+<div class="fn">
+<span class="fn-sig">logout() · line 217</span>
+<p>Deletes the session file. UI notification "ITVX signed out".</p>
+</div>
+
+<h2>Resolvers</h2>
+<div class="fn">
+<span class="fn-sig">resolve(channel, listitem) · line 253</span>
+<p>Live channel playlist. Calls <code>_get_access_token()</code>; if that
+returns empty (no session), it tries <code>login()</code> once as a
+fallback (uses the saved credentials in settings → fully automatic). Then
+POSTs WEB_REQ_DATA with the token to <code>SIMULCAST_URL % channel</code>.</p>
+<p>On HTTP 400/401/403: log "auth error N, attempting refresh", call
+<code>_refresh_session()</code>, rebuild the request, retry once. On a
+second failure raises "session expired - sign in again".</p>
+<p>Reads <code>data["Playlist"]["Video"]["VideoLocations"][0]</code> →
+<code>dash_url</code> = <code>loc["Url"]</code>, <code>key_service</code> =
+<code>loc["KeyServiceUrl"]</code>. If <code>key_service</code> is set,
+we're playing DRM content — pass to
+<a href="init-py.html"><code>setup_dash_item</code></a> with the license
+URL + headers. Else clear DASH.</p>
+</div>
+
+<div class="fn">
+<span class="fn-sig">resolve_vod(production_id, listitem, playlist_url=None) · line 320</span>
+<p>Same shape as live but against the magni VOD URL. Has an additional
+<em>"version retry"</em> fallback (lines 357-372): on a 404 from a
+default-constructed URL, tries <code>.001</code> through <code>.009</code>
+version suffixes — ITV's API exposes "versions" of a programme as separate
+URLs (e.g. signed, AD, repeat episodes), and the very first version isn't
+always the canonical "1". The retry finds the first one that returns
+200.</p>
+
+<div class="callout warn"><span class="callout-title">playlist_url short-circuit</span>
+<p>If the caller passes <code>playlist_url</code> (the URL the show dict
+holds, captured during catalogue scrape), we use it verbatim and skip the
+version retry — the catalogued URL is authoritative. This is the path
+most VOD episodes take; the production_id + version-suffix fallback only
+kicks in when the cataloguing pipeline couldn't pick up a playlist URL.</p>
+</div>
+
+<div class="callout warn"><span class="callout-title">404 with playlist_url is final</span>
+<p>If a 404 comes back <em>with</em> a caller-supplied playlist_url, we
+re-raise rather than retrying — the URL has been observed stale by the
+caller and we trust that signal rather than spam ITV with version probes
+for content we already know is gone.</p>
+</div>
+</div>
+
+<h2>Inbound routes</h2>
+<table>
+<thead><tr><th>Route</th><th>Function</th><th>Triggered by</th></tr></thead>
+<tbody>
+<tr><td><code>?action=itvx_login</code></td><td><code>login()</code></td><td>UI "Sign in" button menu action</td></tr>
+<tr><td><code>?action=itvx_logout</code></td><td><code>logout()</code></td><td>UI "Sign out" button</td></tr>
+<tr><td><code>?action=resolve_vod&provider=itvx&…</code></td><td><code>resolve_vod()</code></td><td>Play episode click in the library</td></tr>
+<tr><td><code>?action=resolve_live&provider=itvx&…</code></td><td><code>resolve(channel, item)</code></td><td>Live channel click in Live TV</td></tr>
+</tbody>
+</table>
+
+<footer class="site">
+<span>← Previous: <a href="c4-py.html">c4.py</a></span>
+<span>Next: <a href="bbc_vod-py.html">bbc_vod.py</a> →</span>
+</footer>
+</main>
+</div>
+</body>
+</html>

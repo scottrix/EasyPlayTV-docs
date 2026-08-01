@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Troubleshooting — EasyPlayTV docs</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="../assets/style.css">
+<script src="../assets/nav.js" defer></script>
+</head>
+<body data-page="troubleshooting">
+<a class="skip-link" href="#main">Skip to content</a>
+<div class="layout">
+<nav class="sidebar"></nav>
+<main id="main">
+<div class="crumbs"><a href="../index.html">Home</a> <span class="sep">/</span> Troubleshooting</div>
+<h1>Troubleshooting & known issues</h1>
+
+<p>Recipes for symptoms observed in production. Each entry follows the
+form <em>symptom</em> → <em>cause</em> → <em>fix</em> → <em>reference into
+the docs</em>. Most of these have already been patched in the source; the
+page is here so a future maintainer can recognize the failure mode
+quickly.</p>
+
+<h2>Database & sync</h2>
+
+<div class="callout danger">
+<span class="callout-title">"Packet sequence number wrong - got 2 expected 1"</span>
+<p><strong>Cause:</strong> two provider-sync daemon threads sharing the
+same <code>pymysql</code> connection. The MySQL protocol is per-connection;
+interleaved packets from two threads corrupt each other.</p>
+<p><strong>Fix:</strong> each worker thread owns its own connection. The
+implementing code in
+<a href="../files/library_sync-py.html">library_sync._get_db</a> uses
+<code>threading.local()</code> + an explicit
+<em>only main thread can fall back to the legacy module-level _sync_db</em>
+guard. Don't break the <code>threading.main_thread()</code> check — the
+old fallback that always grabbed <code>_sync_db</code> for any thread was
+the source of the original corruption.</p>
+</div>
+
+<div class="callout danger">
+<span class="callout-title">"'NoneType' object has no attribute 'read'"</span>
+<p><strong>Cause:</strong> same thing from the other thread's perspective
+— its socket reader got closed out from under it by the other thread's
+<code>ping()</code> failure.</p>
+<p><strong>Fix:</strong> same — per-thread connections.</p>
+</div>
+
+<div class="callout warn">
+<span class="callout-title">Empty/un-prefixed duplicate tvshow rows appearing</span>
+<p><strong>Cause:</strong> Kodi's TMDB scanner recursing into the addon's
+plugin URL or legacy disk-folder path rows after a migration that didn't
+set <code>exclude=1</code>.</p>
+<p><strong>Fix:</strong> ensure
+<a href="../files/library_sync-py.html">library_sync.ensure_series_path_config</a>
+has run (it's called at the start of every <code>sync_series_direct</code>
+run). If duplicate rows already exist, run <code>?action=prefix_titles</code>
+from the UI to retrofit <code>[PROVIDER]</code> prefixes — see the
+<code>prefix_existing_tvshows</code> function.</p>
+</div>
+
+<div class="callout warn">
+<span class="callout-title">TV show row with 0 episodes despite a real TMDb match</span>
+<p><strong>Cause:</strong> a sync run that inserted the tvshow row but
+the provider's list_episodes call threw an exception (transient HTTP
+failure or partial outage). The historical bug was that the insert
+happened <em>before</em> the episode fetch — even if episodes failed
+the show row was empty forever.</p>
+<p><strong>Fix:</strong> the order was switched. Now
+<a href="../files/library_sync-py.html">sync_series_direct</a> fetches
+episodes <em>before</em> calling <code>_insert_tvshow</code>. If the
+fetch fails the show is simply skipped on this run and retried next
+6h slot.</p>
+</div>
+
+<div class="callout warn">
+<span class="callout-title">Empty show rows in DB with no episodes (legacy)</span>
+<p><strong>Cause:</strong> shows first synced by an older version that
+inserted-then-fetched — leftover from before the order switch.</p>
+<p><strong>Fix:</strong> run <em>?action=backfill_art</em> from the UI
+(it doesn't add episodes but matches shows with valid TMDb ids and
+clears some metadata); the next sync will re-fetch episodes. For
+stubborn cases drop and re-sync the specific show: delete from
+<code>tvshow</code> WHERE idShow = <N>; delete from
+<code>tvshowlinkpath</code>, <code>genre_link</code>, <code>uniqueid</code>,
+<code>art</code> with the same idShow; then trigger a sync for that
+provider.</p>
+</div>
+
+<div class="callout warn">
+<span class="callout-title">STV single-episode documentaries missing from library</span>
+<p><strong>Cause:</strong> STV returns episodes with
+<code>episode_number=0</code> when <code>playerSeries</code> is null
+(no per-episode metadata). The
+<a href="../files/library_sync-py.html">sync_series_direct</a> insert
+loop drops episode_number=0 via the <code>if en_int < 1: continue</code>
+guard. Documentaries + entire programmes without per-episode index info
+(Coronation Street, Emmerdale daily strips) were silently dropped.</p>
+<p><strong>Fix:</strong> a renumber pre-pass in sync_series_direct at
+lines 858-888 sequentially renumbers episode_number=0 episodes from 1
+within their season block. If season is also 0/missing, it's bumped to 1
+so the show appears as Season 1 rather than the Kodi specials block
+(S00). The cataloguer doesn't lie about the episode numbers; the sync
+engine's renumber is the workaround for STV's incomplete metadata.</p>
+</div>
+
+<div class="callout warn">
+<span class="callout-title">"Buried" C4 show appears as "Buried Hearts" — the same show fragmenting into two rows</span>
+<p><strong>Cause:</strong> TMDb's search-by-title can re-rank similar-named
+siblings. C4's <em>Buried</em> → TMDb returns <em>Buried Hearts</em> with
+a different tmdb_id. Each subsequent sync resolves the title to the new
+canonical name and inserts episodes into the new row, orphaning the
+original <code>[C4] Buried</code> row forever.</p>
+<p><strong>Fix:</strong>
+<a href="../files/library_sync-py.html">_insert_tvshow</a> prefers the
+<code>[PROVIDER] <show_dir></code> (the local safe_title dir-name
+key) over the <code>[PROVIDER] <TMDb canonical name></code>
+when looking up an existing show. Falling back to TMDb canonical is
+allowed for legacy rows created before this fix. The primary lookup
+must remain the dir-name one.</p>
+</div>
+
+<div class="callout warn">
+<span class="callout-title">Long-running C4 shows (Come Dine with Me, The Bill) lose their episodes</span>
+<p><strong>Cause:</strong> these daily strips produce
+<code>__PARAMS__</code> JSON blocks over 600 KB. The
+<a href="../files/c4_vod-py.html">c4_vod._extract_brand_data</a> walker
+used to cap its scan at 1 MB; lines longer than the cap silently dropped
+the brand data and fell through to "no episodes".</p>
+<p><strong>Fix:</strong> the cap was raised to 4 MB (line 50). If you
+see a bigger show, also bump the cap; the regex still bails at the first
+<code>}</code> that returns the brace depth to 0, so the cap is only a
+safety bound.</p>
+</div>
+
+<h2>Playback</h2>
+
+<div class="callout danger">
+<span class="callout-title">ITVX playback: 403 "Failed to authenticate HMAC" repeatedly</span>
+<p><strong>Cause:</strong> not actually an ITVX issue — this is the My5
+symptom that's been mismarbled in your logs. If you're seeing it on
+My5 (Cassie) the cause is the C5 player JS has rotated the AES/HMAC
+keys, and the addon's cached key is the previous one.</p>
+<p><strong>Fix:</strong>
+<a href="../files/my5-py.html">my5._fetch_cassie</a> already self-heals
+this — on a 403 with body "Failed to authenticate HMAC" it re-extracts
+keys from the live C5 player JS and retries once. If you're still seeing
+403s after that, the path
+<code>https://player.akamaized.net/html5player/core/html5-c5-player.js</code>
+is no longer the right URL — C5 may have moved hosts. Check the network
+tab of the C5 web player to find the new JS bundle URL.</p>
+</div>
+
+<div class="callout warn">
+<span class="callout-title">ITVX playback: "session expired - sign in again"</span>
+<p><strong>Cause:</strong> refresh token expired (they live ~30 days).
+The user's saved credentials in addon settings are still valid but the
+refresh-token grant needs a fresh login.</p>
+<p><strong>Fix:</strong> open the addon's settings, ITVX section, sign
+out, then sign in via the addon's main menu "Sign in to ITVX" item. The
+addon calls <a href="../files/itvx-py.html">itvx.login</a> which uses the
+<em>password grant</em> directly (the cookie-based web flow isn't used
+because the API directly accepts password grant for the
+app.10ft.itv.com origin).</p>
+</div>
+
+<div class="callout warn">
+<span class="callout-title">Sky News playback: "this content is not available in your region"</span>
+<p><strong>Cause:</strong> Brightcove's policy key rotation ignored the
+<code>X-Forwarded-For: 2.97.0.0</code> header
+<a href="../files/sky-py.html">sky.resolve</a> sends. The current Sky
+policy may not trust the XFF header anymore; the addon would start
+returning AU/US manifest URLs that don't play on a UK Kodi box.</p>
+<p><strong>Fix:</strong> if you're not on a UK IP, the addon has no
+remedy — Sky News only ships a UK stream. Run from a UK-IP egress (a
+VPN at the network layer) instead of relying on the XFF spoof. The
+spoof was always a per-policy brittle workaround.</p>
+</div>
+
+<div class="callout warn">
+<span class="callout-title">Blaze shows empty catalogue</span>
+<p><strong>Cause:</strong> Blaze's HTML page scraper
+(<a href="../files/blaze_vod-py.html">blaze_vod.list_shows</a>) regexes
+broke — Blaze changed class names or HTML structure on their static
+page.</p>
+<p><strong>Fix:</strong> open
+<code>https://watch.blaze.tv/series</code> in a browser, view source,
+grep for <em>col-auto layout-carousel-column</em>. If the class names
+changed, update the regex at
+<a href="../files/blaze_vod-py.html">blaze_vod.list_shows</a> line 13
+and the per-card regexes (lines 15-40). No JSON-API fallback exists.</p>
+</div>
+
+<h2>OSMC / Pi-specific hardware</h2>
+
+<div class="callout danger">
+<span class="callout-title">"EGL_BAD_SURFACE" with ITVX Widevine content on OSMC</span>
+<p><strong>Cause:</strong> inputstream.adaptive's secure-decoder path is
+broken on the Pi's V4L2 mem2mem hardware decoder — it tries to allocate
+secure surfaces that the Pi's V4L2 path can't honour, fails with
+EGL_BAD_SURFACE, and bails out of playback entirely.</p>
+<p><strong>Fix:</strong> set <code>NOSECUREDECODER=true</code> in
+inputstream.adaptive's settings on OSMC to force the V4L2 mem2mem
+hardware decoder instead of the broken secure decoder path for ITVX
+Widevine content. improves ITVX startup time dramatically on the Pi:
+~5-8 s from click-to-play rather than the 30-60 s of EGL dithering.</p>
+</div>
+
+<div class="callout warn">
+<span class="callout-title">~13 min startup delay after Kodi reboot</span>
+<p><strong>Cause:</strong> a prior EasyPlayTV run had propagated a
+malformed unquoted XML
+<code><setting id=verboselog>true</setting></code> to
+EasyPlayTV's parent Series path row in MyVideos.path. With
+<code>verboselog=true</code>, Kodi's TMDb scraper dumps 20K+ log lines
+per /tv/<id>/season/N API call (pformat of the entire JSON response),
+costing ~22 s per season on RPi SD-card I/O — e.g. ~13 min for
+WWE Raw alone (35 seasons).</p>
+<p><strong>Fix:</strong>
+<a href="../files/library-sync-py.html">library_sync._sanitize_scraper_settings_xml</a>
+quotes unquoted attributes and pins verboselog=false; called from
+<code>_repair_scraper_path_settings</code> (run once on every
+<code>migrate_to_plugin_paths</code>). If you see verbose log spam after
+a Kodi upgrade, run <code>?action=sync</code> manually to re-fire the
+repair.</p>
+</div>
+
+<h2>Manual syncs / external triggers</h2>
+
+<div class="callout warn">
+<span class="callout-title">JSON-RPC <code>Addons.ExecuteAddon</code> ignored params (Kodi 21+)</span>
+<p><strong>Cause:</strong> Kodi 21's <code>Addons.ExecuteAddon</code>
+no longer invokes python.pluginsource addons with query-string params via
+JSON-RPC — it loads the addon's default entry-point without forwarding
+argv. <code>RunPlugin</code> is similarly unreliable.</p>
+<p><strong>Fix:</strong> use the marker-file mechanism in
+<a href="../files/service-py.html">service.py:_check_force_markers</a>
+instead. Touch a file at
+<code><addon_profile>/force_sync_<provider></code> (e.g.
+<code>force_sync_c4</code>). The service polls every 30 s and fires the
+sync when it sees the marker; latency at worst half a minute. From a
+shell: <code>touch /home/osmc/.kodi/userdata/addon_data/plugin.video.easyplaytv/force_sync_c4</code>.</p>
+</div>
+
+<div class="callout warn">
+<span class="callout-title">Manual sync via JSON-RPC kills the daemon thread</span>
+<p><strong>Cause:</strong> if you trigger
+<code>?action=sync&provider=c4</code> (fire-and-forget mode, no
+<code>blocking=1</code>) over JSON-RPC, the daemon thread spawned dies
+the moment the calling script returns — JSON-RPC <code>RunPlugin</code>
+tears down the interpreter that owns the daemon.</p>
+<p><strong>Fix:</strong> always use <code>?action=sync&provider=c4&blocking=1</code>
+from JSON-RPC, OR use the marker-file approach above. From the addon's
+own UI menu it's fine without blocking because the navigation thread
+isn't torn down.</p>
+</div>
+
+<footer class="site">
+<span>← Previous: <a href="path-migration.html">Path & migration log</a></span>
+<span><a href="../index.html">Home</a></span>
+</footer>
+</main>
+</div>
+</body>
+</html>

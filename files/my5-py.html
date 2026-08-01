@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>my5.py — EasyPlayTV docs</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="../assets/style.css">
+<script src="../assets/nav.js" defer></script>
+</head>
+<body data-page="my5-py">
+<a class="skip-link" href="#main">Skip to content</a>
+<div class="layout">
+<nav class="sidebar"></nav>
+<main id="main">
+<div class="crumbs"><a href="../index.html">Home</a> <span class="sep">/</span> Files <span class="sep">/</span> my5.py</div>
+<h1>resources/lib/my5.py <small>— My5 Cassie key extractor + resolver</small></h1>
+
+<div class="file-meta">
+<span><strong>Path</strong> <code>/resources/lib/my5.py</code></span>
+<span><strong>Lines</strong> 249</span>
+<span><strong>Type</strong> playback resolver (DASH + Widevine)</span>
+<span><strong>← called by</strong> <a href="default-py.html">default.py:_resolve_vod</a>, <a href="default-py.html">default.py:_resolve_channel</a></span>
+<span><strong>→ calls</strong> PyCryptodome (AES + HMAC), Cassie JSON API, <a href="init-py.html">setup_dash_item</a></span>
+</div>
+
+<h2>Role</h2>
+<p>Resolves both My5 live channels (Channel 5, 5 Star, 5 USA, 5 Action,
+5 Select) and on-demand episodes. The interesting part is that every
+request to Cassie (My5's backend) is HMAC-signed AND the response is
+AES-CBC-encrypted — and both keys are XOR-obfuscated inside
+<em>C5's live player JavaScript</em>. The addon extracts them at runtime,
+caches them in memory, and re-extracts if a 403 "Failed to authenticate
+HMAC" comes back (which happens when C5 rotates the keys, approximately
+weekly).</p>
+
+<h2>Constants</h2>
+<div class="fn">
+<span class="fn-sig">CASSIE_BASE_VOD/LIVE_URL = https://cassie.channel5.com/api/v2/{media|live_media} · CASSIE_PLATFORM_ID = "my5desktopng" · lines 12-14</span>
+<p>Cassie API roots. The desktop platform ID is what the C5 web player
+sends — important because the keys are bound to this platform. Changing
+the platform ID without re-extracting keys would 403.</p>
+</div>
+
+<div class="fn">
+<span class="fn-sig">PLAYER_JS_URL = "https://player.akamaized.net/html5player/core/html5-c5-player.js" · line 22</span>
+<p>The Akamai-hosted player script that holds the obfuscated key blob.
+This is the file we fetch on every fresh-key extraction.</p>
+</div>
+
+<div class="fn">
+<span class="fn-sig">_cassie_keys = {"hmac_b64": None, "aes_b64": None} · line 24</span>
+<p>Module-level cache. Lives for the addon's Python interpreter lifetime
+(which is short-lived in the plugin case — every directory-listing action
+spawns a new interpreter — but long-lived for the service), then
+re-extracted on next call.</p>
+</div>
+
+<h2>Crypto primitives</h2>
+<div class="fn">
+<span class="fn-sig">_b64url_encode/_b64url_decode · lines 36, 40</span>
+<p>URL-safe base64 (<code>+</code> → <code>-</code>, <code>/</code> → <code>_</code>,
+strips padding on encode, re-pads on decode). Cassie uses URL-safe base64
+for signatures and IVs.</p>
+</div>
+
+<div class="fn">
+<span class="fn-sig">try: from Crypto.Cipher import AES ... except ImportError: from Cryptodome.Cipher import AES · lines 28-33</span>
+<p>Two import paths — <code>pycrypto</code> (legacy) or <code>pycryptodomex</code>
+(newer). Whatever's installed. Kodi on OSMC ships PyCryptodome.</p>
+</div>
+
+<h2>The key heist — _extract_cassie_keys</h2>
+<div class="fn">
+<span class="fn-sig">_extract_cassie_keys() → (aes_b64, hmac_b64) · line 46</span>
+<p>This is the wild part. Steps:</p>
+<ol>
+<li>Fetch the live C5 player JS from <code>PLAYER_JS_URL</code>.</li>
+<li>Find the 6-character XOR key — looks like <code>})('XXXXXX')</code>
+in the source.</li>
+<li>Find the obfuscated config blob — a long string literal (≥3000
+characters) returned by a closure. Try double-quotes first, fall back to
+single-quotes.</li>
+<li>URL-decode the blob (it's <code>%xx</code>-escaped).</li>
+<li>XOR-decode character-by-character against the 6-char key cyclically —
+this unwraps the obfuscation.</li>
+<li>Scan the decoded text for 24-character base64 strings (22 alphanumeric
++ 1 or 2 <code>=</code> padding characters) that decode to <em>exactly</em>
+16 bytes.</li>
+<li>Take keys[1] as AES, keys[0] as HMAC (verified empirically — comment at
+line 89).</li>
+</ol>
+
+<div class="callout danger"><span class="callout-title">Key extraction regex MUST require ≥1 <code>=</code> pad</span>
+<p>The regex at line 78 —
+<code>r'(?<![A-Za-z0-9+/])([A-Za-z0-9+/]{22}={1,2})(?![A-Za-z0-9+/])'</code> —
+<em>requires</em> at least one <code>=</code> pad character. Why:</p>
+<ul>
+<li>Standard base64 of a 16-byte buffer is 22 chars + <code>==</code> (24
+total).</li>
+<li>The C5 player JS at various points strips <em>one</em> trailing
+<code>=</code>, yielding 22 chars + 1 <code>=</code>.</li>
+<li>Loosening the regex to <code>={0,2}</code> matches ~130 unrelated JS
+method names (e.g. <code>"getTextTrackContainer+"</code>) which happen to
+match the loose b64-alphabet pattern and decode to 16 bytes by coincidence
+— they would corrupt the cache and 403 every request.</li>
+</ul>
+<p>Plus the negative-lookbehind/lookahead
+<code>(?<![A-Za-z0-9+/])</code> / <code>(?![A-Za-z0-9+/])</code> ensures
+we don't match a substring of a longer base64 blob.</p>
+</div>
+
+<div class="callout warn"><span class="callout-title">Re-pad before <code>base64.b64decode()</code></span>
+<p>Line 82: <code>c_padded = c + "=" * ((4 - len(c) % 4) % 4)</code>.
+<code>base64.b64decode</code> silently accepts misaligned 22-char strings
+and returns 16 bytes if they happen to align — but the alignment is
+unpredictable. Always re-pad to a multiple of 4 before decoding.</p>
+</div>
+</div>
+
+<div class="fn">
+<span class="fn-sig">_get_cassie_keys(force_refresh=False) → (aes_b64, hmac_b64) · line 93</span>
+<p>Cached accessor. Extracts fresh if <code>force_refresh=True</code> or
+the cache is empty. Always returns in the order (AES, HMAC).</p>
+</div>
+
+<h2>URL signing + decryption</h2>
+<div class="fn">
+<span class="fn-sig">_build_cassie_url(content_id, is_live=False, timestamp=None, hmac_key_b64=None) → str · line 104</span>
+<p>Constructs the signed Cassie URL:</p>
+<ol>
+<li>Path = <code>CASSIE_BASE_{VOD|LIVE}_URL/<CASSIE_PLATFORM_ID>/<content_id>.json</code>.</li>
+<li>Append <code>?timestamp=<unix_int></code>.</li>
+<li>HMAC-SHA256 the URL-with-timestamp string using the HMAC key as bytes.</li>
+<li>URL-safe base64-encode the signature, append as <code>&auth=<sig></code>.</li>
+</ol>
+<p>The signature is bound to the timestamp, so requests expire after
+~1 hour (C5's TTL).</p>
+</div>
+
+<div class="fn">
+<span class="fn-sig">_fetch_cassie(content_id, is_live=False) → dict · line 117</span>
+<p>Performs the signed fetch. On HTTP 403 with body
+<em>"Failed to authenticate HMAC"</em>: re-extract keys
+(<code>_get_cassie_keys(force_refresh=True)</code>), rebuild URL, retry
+once. Any other HTTP error or a non-HMAC 403 re-raises.</p>
+<p>The successful response is JSON with <code>iv</code> + <code>data</code>
+fields, both URL-safe base64 — passed to <code>_decrypt_cassie()</code>.</p>
+</div>
+
+<div class="fn">
+<span class="fn-sig">_decrypt_cassie(encrypted_response, aes_b64=None) → dict · line 146</span>
+<p>AES-CBC decrypt with PKCS7 unpadding. Returns the parsed JSON dict that
+contains the stream manifest URL + license server URL.</p>
+</div>
+
+<div class="fn">
+<span class="fn-sig">_extract_stream(data) → (stream_url, keyserver) · line 157</span>
+<p>Iterates <code>data["assets"]</code>, picks the first one where
+<code>asset["drm"] == "widevine"</code>, takes its <code>keyserver</code>
+(license URL) and the first rendition's <code>url</code> (manifest URL).
+Throws <em>"My5: no widevine stream found"</em> if no Widevine asset is
+available — purely-free content isn't supported by this resolver path.</p>
+</div>
+
+<h2>Resolvers</h2>
+<div class="fn">
+<span class="fn-sig">resolve(item_id, listitem) · line 172 — for live</span>
+<p>Called by <a href="default-py.html"><code>default.py:_resolve_channel</code></a>
+for the Channel 5 / 5 Star / 5 USA / 5 Action / 5 Select channels. Fetches
+Cassie in live mode, extracts the Widevine stream + keyserver, hands them
+to <a href="init-py.html"><code>setup_dash_item()</code></a> with the
+standard My5 license headers.</p>
+<p>Always swallows exceptions and logs a warning — never raises. The
+calling <code>_resolve_channel</code> does the same, so a key-extraction
+failure on a live channel doesn't crash the plugin.</p>
+</div>
+
+<div class="fn">
+<span class="fn-sig">_resolve_episode_guid(episode_f_name, show_f_name=None) → str · line 190</span>
+<p>Helper used by resolve_vod when the caller knows the episode's
+<em>friendly name</em> (a slug) but Cassie needs the GUID (e.g.
+<code>C5XXXXXX</code>). Walks <code>my5_vod.list_seasons</code> +
+<code>list_episodes</code> looking for a matching <code>f_name</code>,
+falls back to corona's <code>episodes/next.json</code> endpoint.</p>
+</div>
+
+<div class="fn">
+<span class="fn-sig">resolve_vod(episode_id, listitem, standalone=False, f_name=None, show_f_name=None) · line 213</span>
+<p>VOD playback. Three resolution paths:</p>
+<ul>
+<li>If <code>standalone=True</code>: call
+<a href="my5_vod-py.html"><code>my5_vod.get_standalone_episode_id</code></a>
+to translate the show <code>f_name</code> into a single-episode GUID.</li>
+<li>If <code>episode_id</code> doesn't start with "C": it's a slug, run
+<code>_resolve_episode_guid</code> to get the GUID.</li>
+<li>Otherwise: <code>episode_id</code> is already the GUID, use directly.</li>
+</ul>
+<p>Then fetch Cassie, extract stream + license, hand to
+<a href="init-py.html"><code>setup_dash_item()</code></a>.</p>
+</div>
+
+<h2>Notable details</h2>
+<ul>
+<li><code>stream_url = stream_url.replace("subtitles=off", "subtitles=on")</code>
+at lines 176 & 238 — C5's manifests ship with subtitles disabled by
+default for direct stream URLs; flipping the query param re-enables
+them before Kodi opens the manifest.</li>
+<li>License headers shape:
+<code>"User-Agent=<UA>&Referer=https://www.channel5.com/&Content-Type=application/octet-stream"</code>
+— Cassie's widevine endpoint sniffs both UA + Referer and rejects Roku/
+Android UAs, hence the desktop-Chrome UA from
+<a href="init-py.html"><code>get_ua()</code></a>.</li>
+<li><code>license_payload=None</code> is passed explicitly so
+<a href="init-py.html"><code>setup_dash_item()</code></a> uses the
+<code>{SSM}</code> placeholder path (not the pre-built-payload path My5
+used to need).</li>
+</ul>
+
+<footer class="site">
+<span>← Previous: <a href="strm-py.html">strm.py</a></span>
+<span>Next: <a href="c4-py.html">c4.py</a> →</span>
+</footer>
+</main>
+</div>
+</body>
+</html>

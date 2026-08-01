@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>bbc.py — EasyPlayTV docs</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="../assets/style.css">
+<script src="../assets/nav.js" defer></script>
+</head>
+<body data-page="bbc-py">
+<a class="skip-link" href="#main">Skip to content</a>
+<div class="layout">
+<nav class="sidebar"></nav>
+<main id="main">
+<div class="crumbs"><a href="../index.html">Home</a> <span class="sep">/</span> Files <span class="sep">/</span> bbc.py</div>
+<h1>resources/lib/bbc.py <small>— BBC iPlayer resolver</small></h1>
+
+<div class="file-meta">
+<span><strong>Path</strong> <code>/resources/lib/bbc.py</code></span>
+<span><strong>Lines</strong> 71</span>
+<span><strong>Type</strong> playback resolver (clear DASH)</span>
+<span><strong>← called by</strong> <a href="default-py.html">default.py</a></span>
+<span><strong>→ calls</strong> BBC MediaSelector 6 + iPlayer episode-page scraper, <a href="init-py.html">setup_dash_item</a></span>
+</div>
+
+<h2>Role</h2>
+<p>Resolves live TV channels (BBC One, Two, Three, Four, CBBC, CBeebies,
+News, Parliament, Alba, Scotland, S4C) and on-demand iPlayer episodes to
+DASH manifests. BBC streams have <em>nodrm</em> — these are clear DASH,
+so no license URL is involved.</p>
+
+<div class="callout warn"><span class="callout-title">BBC requires TV license</span>
+<p>The plugin entry point in <a href="default-py.html">default.py</a> has a
+<code>_bbc_enabled()</code> gate that reads the <code>has_tv_license</code>
+addon setting before allowing BBC content. See
+<a href="default-py.html">default.py:_resolve_channel</a> line 119. This
+is purely advisory (an honour-system popup) — BBC's MediaSelector only
+geofences by UK-IP — but it's clearly the right UX choice if you're a UK
+developer shipping a Kodi addon.</p>
+</div>
+
+<h2>Constants</h2>
+<div class="fn">
+<span class="fn-sig">MEDIASELECTOR_URL = "https://open.live.bbc.co.uk/mediaselector/6/select/version/2.0/mediaset/pc/vpid/<ID>/format/json/cors/1" · line 7</span>
+<p>The same MediaSelector 6 JSON endpoint that bbc.co.uk's own player
+uses. <code>mediaset=pc</code> is the desktop PC profile; mobile/tablet
+would also work but with lower max resolution.</p>
+</div>
+<div class="fn">
+<span class="fn-sig">CDN_PRIORITY = {"akamai":1, "llnw":2, "limelight":2, "bidi":3, "cloudfront":4} · line 9</span>
+<p>Which CDN supplier is preferred when multiple DASH streams are returned.
+Akamai > Limelight/Limelight Bidi > Bidi > CloudFront. The choice is
+mostly historical; on tor (OSMC, UK-IP) Akamai tends to give the lowest
+start-up latency.</p>
+</div>
+<div class="fn">
+<span class="fn-sig">REDUX_RE = re.compile(r'window\.__IPLAYER_REDUX_STATE__\s*=\s*({.*?});\s*</script>') · line 11</span>
+<p>Regex that matches the inline JSON the iPlayer episode page writes into
+the page as a JS global. This is the same JSON the web player uses; we
+parse it to get the version list (each iPlayer episode has multiple
+"versions" for signed, audio-described, HD, etc.) — we pick the first one
+and use its <code>id</code> as the <em>vpid</em> for MediaSelector.</p>
+</div>
+
+<h2>Resolution helpers</h2>
+<div class="fn">
+<span class="fn-sig">_get_vpid(pid) → str · line 17</span>
+<p>For VOD episodes: takes the show's URL slug (e.g. <code>m000abc1</code>)
+and fetches the iPlayer episode HTML page, parses the
+<code>__IPLAYER_REDUX_STATE__</code> JSON, picks the first version's id.
+This is needed because MediaSelector expects the <em>version id</em>
+(<em>vpid</em>), not the page slug. Throws
+<em>"BBC: could not load episode page"</em> or
+<em>"BBC: no versions found"</em> on parse failure.</p>
+</div>
+<div class="fn">
+<span class="fn-sig">_select_dash_stream(vpid) → str · line 30</span>
+<p>For live channels the <code>channel_id</code> (e.g.
+<code>bbc_one_hd</code>) <em>is</em> the vpid. For VOD episodes, the
+<code>vpid</code> comes from <code>_get_vpid</code>. Hits MediaSelector,
+detects the <code>"result":"geolocation"</code> response and raises
+<em>"BBC: Geoblocked"</em> — there's no in-addon IP-tunnel fallback, so
+non-UK access just fails.</p>
+<p>Iterates <code>data["media"]</code>, picks media entries where
+<code>kind</code> starts with "video" (filters out audio-only). For each,
+looks at its <code>connection</code> entries, restricts to
+<code>protocol == "https"</code> + <code>transferFormat == "dash"</code>,
+computes a CDN priority via the <code>CDN_PRIORITY</code> table, sorts
+ascending, returns the first (lowest-priority-rank) stream URL.</p>
+<div class="callout warn"><span class="callout-title">All-kind matching</span>
+<p>MediaSelector returns many connection entries per media — only those
+with the <em>exact</em> kind "video_X" (where X is e.g. "ek360",
+"iptv-all") are considered. Audio-only connections (kind
+"audio" or "audio_video") are silently skipped — Kodi picks up audio
+tracks from the DASH manifest itself.</p>
+</div>
+</div>
+
+<h2>Resolvers</h2>
+<div class="fn">
+<span class="fn-sig">resolve(channel_id, listitem) · line 59 — for live</span>
+<p>BBC live channels don't go through <code>_get_vpid</code> (the channel
+id is already the vpid). Calls <code>_select_dash_stream</code> and
+hands the manifest to <a href="init-py.html"><code>setup_dash_item()</code></a>
+with <code>manifest_type="mpd"</code> and no license URL (clear DASH).</p>
+</div>
+<div class="fn">
+<span class="fn-sig">resolve_vod(episode_id, listitem) · line 64 — for VOD</span>
+<p>Powering the linked-to-from-the-library VOD play URLs. Two HTTP hops:
+<code>_get_vpid(episode_id)</code> → iPlayer page → MediaSelector. Heavy
+debug logging at lines 65/67/69 (every step writes to kodi.log) — useful
+when chasing intermittent failures. Hands off via
+<a href="init-py.html"><code>setup_dash_item()</code></a>, no license.</p>
+</div>
+
+<footer class="site">
+<span>← Previous: <a href="my5-py.html">my5.py</a></span>
+<span>Next: <a href="c4-py.html">c4.py</a> →</span>
+</footer>
+</main>
+</div>
+</body>
+</html>

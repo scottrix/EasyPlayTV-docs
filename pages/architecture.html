@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Architecture — EasyPlayTV docs</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="../assets/style.css">
+<script src="../assets/nav.js" defer></script>
+</head>
+<body data-page="architecture">
+<a class="skip-link" href="#main">Skip to content</a>
+<div class="layout">
+<nav class="sidebar"></nav>
+<main id="main">
+<div class="crumbs"><a href="../index.html">Home</a> <span class="sep">/</span> Architecture</div>
+<h1>Architecture</h1>
+
+<p>EasyPlayTV is two cooperating processes inside Kodi:</p>
+<ol>
+<li><strong>Plugin</strong> — <code>default.py</code>, invoked by Kodi on every
+listitem click and every directory navigation. Short-lived, stateless, fast:
+its job is to take a routed URL like <code>?action=resolve_vod&provider=my5&...</code>
+and turn it into a Kodi <code>ListItem</code> with the right
+<a href="../files/init-py.html"><code>setup_dash_item()</code></a> props set.</li>
+<li><strong>Service</strong> — <code>service.py</code>, a long-lived
+<code>xbmc.Monitor</code> daemon that triggers a TMDb-enriched library sync of
+each provider every 6 hours. It writes directly to the Kodi video database
+while Kodi is running.</li>
+</ol>
+
+<p>Both processes run in the same Kodi Python interpreter (separate
+<code>LanguageInvoker</code> threads), and they share code under
+<code>resources/lib/</code>. The shared modules split cleanly between
+"things the plugin needs" (fast path, UI listing, DASH setup) and "things the
+service needs" (slow path, network fetches, TMDb lookups, DB inserts).</p>
+
+<h2>Request flow</h2>
+
+<h3>1. User clicks an episode in the Kodi library</h3>
+<p>Kodi starts a fresh Python interpreter for the plugin, invokes
+<code>default.py</code> with argv like
+<code>?action=resolve_vod&provider=my5&episode_id=a-family-christmas&...</code>
+and the script's <code>if __name__ == '__main__'</code> block dispatches on
+<code>action</code>:</p>
+<pre><code>args = dict(urllib.parse.parse_qsl(sys.argv[2][1:]))
+action = args.get('action')
+...
+elif action == 'resolve_vod':
+    vod_kwargs = {k: args[k] for k in args if k not in ("action", "provider", "episode_id")}
+    _resolve_vod(args.get('provider'), args.get('episode_id'), **vod_kwargs)
+</code></pre>
+<p><code>_resolve_vod()</code> populates a <code>ListItem</code> with display
+labels (skin-friendly "1x01." prefix comes from setInfo <code>season</code>/<code>episode</code>) and calls
+the per-provider resolver (e.g. <a href="../files/my5-py.html"><code>my5.resolve_vod()</code></a>).
+The resolver returns after calling <a href="../files/init-py.html"><code>setup_dash_item()</code></a>, which sets
+the <code>inputstream.adaptive</code> properties on the listitem for MPEG-DASH + Widevine.</p>
+<p>Kodi then takes that listitem, hands the manifest URL to
+<code>inputstream.adaptive</code>, opens the Widevine session with the
+license URL we set, and starts playback.</p>
+
+<h3>2. User opens Movies → Genre → Family</h3>
+<p>This is a <em>browse</em> call, not a <em>play</em> call. Kodi calls
+<code>default.py</code> with <code>?mode=movies_genre&genre=films</code> →
+<code>list_movies(genre, page=1)</code>. That function reads from Kodi's
+already-populated video DB via <a href="../files/movies_db-py.html"><code>movies_db.get_movies(genre, ...)</code></a>,
+which returns plain Kodi library rows, not from the live provider catalogue.
+This is what makes browsing fast (no live HTTP fetches per click) — every
+provider's shows have been pre-synced by the background service.</p>
+
+<h3>3. Service fires scheduled sync at 01:00 for C4</h3>
+<p><a href="../files/service-py.html"><code>service.py</code></a> polls every
+30&nbsp;s: when <code>now > self._next_sync["c4"]</code>, it spawns a daemon
+thread that calls <a href="../files/library_sync-py.html"><code>library_sync.sync_provider("c4")</code></a>
+→ <code>sync_series_direct(provider_filter="c4")</code>. The sync fetches
+every C4 series listing, calls TMDb to enrich the metadata, then issues raw
+SQL <code>INSERT INTO tvshow / episode / files / seasons / uniqueid</code> to
+populate the Kodi DB. A successful sync concludes with
+<a href="../files/library_sync-py.html"><code>prefix_existing_tvshows()</code></a>
+and a targeted <code>UpdateLibrary(video, ...)</code> so Kodi's window refreshes.</p>
+
+<h2>Module dependency graph</h2>
+<pre><code>                default.py                       service.py
+                    │                                  │
+        ┌───────┬──┴──┬───────┐                         │
+        │       │     │       │                         ▼
+    movies_db  series_db  livestream  ⊇ resources.lib.library_sync
+       │          │       │  │                              │
+       │          │       │  └─ bbc.py / itvx.py /           │
+       │          │       │     c4.py / stv.py /              ▼
+       │          │       │     blaze.py / sky.py          strm.py (URL builders +
+       │          │       │                                show fetchers for sync)
+       │          │       │
+       └────┬─────┘       └──►  resources.lib.__init__
+            │                    (setup_dash_item, load_provider_map, get_ua)
+            │
+            ▼
+       per-provider VOD modules
+       my5.py / c4.py / itvx.py / bbc.py / stv_vod.py / blaze_vod.py
+</code></pre>
+
+<h2>State files in <code>addon_data/plugin.video.easyplaytv/</code></h2>
+<table>
+<thead><tr><th>File</th><th>Writer</th><th>Reader</th><th>Purpose</th></tr></thead>
+<tbody>
+<tr><td><code>provider_map.json</code></td><td>library_sync.py</td><td>library_sync.py, default.py</td><td>Map safe-title → provider label + f_name/pid/slug for cross-reference. Used to prefix existing un-prefixed rows on migration.</td></tr>
+<tr><td><code>library_sync_state.json</code></td><td>library_sync.py</td><td>library_sync.py</td><td>Movie sync state (synced_titles + last_sync timestamps).</td></tr>
+<tr><td><code>series_sync_state.json</code></td><td>library_sync.py</td><td>library_sync.py</td><td>Series sync state — skips shows already synced in the last 6h window (avoid hammering TMDb).</td></tr>
+<tr><td><code>stale_titles.json</code></td><td>catalog_check.py</td><td>default.py</td><td>Titles marked stale during browsing (e.g. fetched 0 episodes twice in a row) so the UI greys them out without a full resync.</td></tr>
+<tr><td><code>itv_session</code></td><td>itvx.py</td><td>itvx.py</td><td>OAuth access + refresh tokens for ITVX (required for VOD playback of any ITV channel content).</td></tr>
+<tr><td><code>itvx_cookies.pkl</code></td><td>itvx_vod.py</td><td>itvx_vod.py</td><td>Pickled <code>http.cookiejar</code> for the itvx.com catalog fetches (compiled by the scraper behind the scenes).</td></tr>
+<tr><td><code>stv_cache/</code></td><td>stv_vod.py</td><td>stv_vod.py</td><td>Per-show JSON responses cached to avoid re-downloading 535 catalog pages every sync.</td></tr>
+<tr><td><code>settings.xml</code></td><td>Kodi settings UI</td><td>all via <code>_ADDON.getSetting*</code></td><td>db_source (0=master/1=follower), max_resolution, itvx_email/password, has_tv_license.</td></tr>
+</tbody>
+</table>
+
+<h2>Concurrency notes (sharp edges)</h2>
+<div class="callout danger">
+<span class="callout-title">pymysql is NOT thread-safe on a shared connection</span>
+<p>The original single-connection code sometimes corrupted into
+<em>"Packet sequence number wrong - got 2 expected 1"</em> when the service
+sync ran while a plugin call was also reading. <code>_get_db()</code> now uses
+<code>threading.local()</code> to give each worker thread its own
+<code>pymysql.connect()</code>. Cache the local object per-thread; never pass
+a connection into a worker thread.</p>
+</div>
+
+<div class="callout warn">
+<span class="callout-title">RunPlugin via JSON-RPC no longer loads python.pluginsource</span>
+<p>Kodi 21 changed how <code>Addons.ExecuteAddon</code> routes: it fires up
+the addon via the addon.xml entry-point but does not forward query-string
+parameters. That's why the addon ships <code>service.py</code> as a
+<code>xbmc.Monitor</code> service that polls marker files
+(<code>force_sync_<provider></code>) in
+<code>addon_data/</code> — the JSON-RPC call doesn't work for triggering
+targeted syncs, the marker file does.</p>
+</div>
+
+<div class="callout warn">
+<span class="callout-title">Kodi's TMDB scanner made the addon's life harder</span>
+<p>For most of the addon's history it wrote <code>.strm</code> files (each
+containing a single <code>plugin://</code> URL) under
+<code>addon_data/plugin.video.easyplaytv/Series/<Show>/Season<N>/</code>
+and let Kodi's TMDb scanner pick them up. The TMDb scraper kept creating
+un-prefixed duplicate tvshow rows from the bare <code>.strm</code> filenames
+(e.g. <code>Ackley Bridge.strm</code> → row <code>Ackley Bridge</code>) that
+collided with the addon's own <code>[ITVX] Ackley Bridge</code> convention.
+The addon now writes <code>plugin://</code> URLs directly into the
+<code>files</code> table under a single plugin-source path row with
+<code>exclude=1</code>, bypassing the TMDb scanner entirely. See
+<a href="path-migration.html">Path & migration log</a> for the full history.</p>
+</div>
+
+<h2 id="endpoint-glossary">Per-provider network endpoints (one-line summary)</h2>
+<p>Full comparison lives on the <a href="provider-matrix.html">Provider matrix</a> page.</p>
+<table>
+<thead><tr><th>Provider</th><th>Catalogue</th><th>Stream</th><th>Auth</th><th>DRM</th></tr></thead>
+<tbody>
+<tr><td>BBC iPlayer</td><td>HTML scrape (<code>__IPLAYER_REDUX_STATE__</code>)</td><td>MediaSelector 6 JSON</td><td>None (UK-IP geofenced)</td><td>None (clear DASH)</td></tr>
+<tr><td>ITVX</td><td>HTML scrape (Next.js <code>__NEXT_DATA__</code>)</td><td>magni playlist POST</td><td>OAuth (JWT in <code>itv_session</code>)</td><td>Widevine L3</td></tr>
+<tr><td>My5</td><td>corona.channel5.com JSON API</td><td>cassie.channel5.com JSON API</td><td>HMAC + AES, both keys XOR-extracted from live player JS</td><td>Widevine</td></tr>
+<tr><td>Channel 4</td><td>HTML scrape (<code>__PARAMS__</code> inline JSON)</td><td><code>/vod/stream/<id></code> JSON</td><td>AES-CBC encrypted token (keys hardcoded per client)</td><td>Widevine via Redbeemedia</td></tr>
+<tr><td>STV</td><td>player.api.stv.tv JSON</td><td>Same</td><td><code>stv-drm: true</code> header</td><td>Widevine</td></tr>
+<tr><td>Blaze</td><td>watch.blaze.tv HTML scrape</td><td>Same HTML scrape (per-episode <code>data-key</code>)</td><td>None</td><td>None</td></tr>
+<tr><td>Sky News</td><td>no catalogue (single live stream)</td><td>Brightcove playback API</td><td>None (UK-IP)</td><td>Widevine optional</td></tr>
+</tbody>
+</table>
+
+<footer class="site">
+<span>← Next: <a href="db-schema.html">Kodi DB schema</a></span>
+<span><a href="../index.html">Home</a></span>
+</footer>
+</main>
+</div>
+</body>
+</html>

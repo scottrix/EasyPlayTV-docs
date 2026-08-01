@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>itvx_vod.py — EasyPlayTV docs</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="../assets/style.css">
+<script src="../assets/nav.js" defer></script>
+</head>
+<body data-page="itvx_vod-py">
+<a class="skip-link" href="#main">Skip to content</a>
+<div class="layout">
+<nav class="sidebar"></nav>
+<main id="main">
+<div class="crumbs"><a href="../index.html">Home</a> <span class="sep">/</span> Files <span class="sep">/</span> itvx_vod.py</div>
+<h1>resources/lib/itvx_vod.py <small>— ITVX catalogue</small></h1>
+
+<div class="file-meta">
+<span><strong>Path</strong> <code>/resources/lib/itvx_vod.py</code></span>
+<span><strong>Lines</strong> 373</span>
+<span><strong>Type</strong> catalogue scraper (Next.js <code>__NEXT_DATA__</code> JSON + session cookies)</span>
+<span><strong>← called by</strong> <a href="strm-py.html">strm._fetch_*</a>, <a href="library_sync-py.html">library_sync.sync_series_direct</a></span>
+<span><strong>→ calls</strong> www.itv.com Next.js-rendered HTML pages, ITVX's same auth/cookie session used by <a href="itvx-py.html">itvx.py</a></span>
+</div>
+
+<h2>Role</h2>
+<p>Scrapes ITVX's server-rendered React pages (Next.js). Each page embeds
+a JSON blob inside
+<code><script id="__NEXT_DATA__" type="application/json">{...}</script></code>
+— the same JSON Next.js uses to hydrate the client. Parses that JSON into
+the addon's show/season/episode dict shape.</p>
+
+<h2>Constants</h2>
+<div class="fn">
+<span class="fn-sig">BASE_URL = "https://www.itv.com" · line 8</span>
+<p>Root for all ITVX URLs (the new site consolidated watch.itv.com under
+www.itv.com).</p>
+</div>
+<div class="fn">
+<span class="fn-sig">CATEGORIES = [("drama-soaps","Drama & Soaps"), ("films","Films"), ...] · lines 10-20</span>
+<p>9 paired slugs/labels. ITVX exposes more genres internally but they
+don't all map cleanly to the addon's UNIFIED_GENRES — only the 9 we use
+appear here.</p>
+</div>
+<div class="fn">
+<span class="fn-sig">NEXT_DATA_RE = re.compile(r'<script\s+id="__NEXT_DATA__"\s+type="application/json">(.+?)</script>') · line 22</span>
+<p>Matches the embedded JSON. Uses lazy <code>(.+?)</code> because the JSON
+is single-line; the closing <code></script></code> tag is the only valid
+terminator.</p>
+</div>
+<div class="fn">
+<span class="fn-sig">UA = "Mozilla/5.0 (X11; Linux x86_64; rv:145.0) Gecko/20100101 Firefox/145.0" · line 27</span>
+<p>Firefox 145 (note: <a href="itvx-py.html">itvx.py</a> uses Firefox 131 for
+the playlist endpoint — slightly different sniffing requirement — while
+the catalogue scraper uses 145. The mismatch is empirically observed
+to avoid some ITVX bot-detection rules that flag mismatched UAs across
+the same session). Would be nice to consolidate; not a priority.</p>
+</div>
+<div class="fn">
+<span class="fn-sig">IMG_PROPS_THUMB = {"treatment":"title", "aspect_ratio":"16x9", ...} · lines 31-43</span>
+<p>ITVX's image CDN takes a JSON-encoded query string telling it how to crop,
+mask, and render the source image. This dict gets URL-encoded into the
+<code>?</code> of each image URL.</p>
+</div>
+
+<h2>Session management</h2>
+<div class="fn">
+<span class="fn-sig">_get_cookie_dir() · line 49</span>
+<p>Resolves the addon profile dir under Kodi, falls back to
+<code>~/.easyplaytv</code> outside Kodi (e.g. unit tests).</p>
+</div>
+<div class="fn">
+<span class="fn-sig">_get_session() · line 58</span>
+<p>Lazy-init of a <code>requests.Session</code> with a custom SSL adapter
+that pins the default SSL context (avoids Kodi 21's lenient default that
+breaks ITVX's cert chain). Mounts <code>CustomAdapter</code>
+on <code>https://</code>. Loads cookies from a pickled
+<code>itvx_cookies.pkl</code> file in the cookie dir.</p>
+</div>
+
+<h2>Listing functions</h2>
+<div class="fn">
+<span class="fn-sig">list_categories() · line 214</span>
+<p>Static return from <code>CATEGORIES</code>. Could call the live site's
+/categories endpoint but ITVX's category page doesn't surface the
+list-with-counts at the API level we use; the static list is simpler and
+rarely changes.</p>
+</div>
+<div class="fn">
+<span class="fn-sig">list_shows(category_id) · line 228</span>
+<p>Fetches <code>https://www.itv.com/watch/categories/<slug></code>,
+parses <code>__NEXT_DATA__</code>, walks
+<code>data["props"]["pageProps"]["..."]["titles"]</code>. Each title
+dict has <em>id</em> (the production_id), <em>title</em>, <em>slug</em>
+(programme URL slug), <em>imageUr  ls</em>, and — importantly —
+<em>standalone</em> (true if "playable" one-off, false if multi-episode
+series). The addon's <a href="strm-py.html"><code>strm._fetch_series_shows</code></a>
+uses <code>standalone</code> + <code>episode_id</code> to decide
+<code>_nav_mode</code>.</p>
+</div>
+<div class="fn">
+<span class="fn-sig">list_episodes(programme_slug, programme_id) · line 285</span>
+<p>Fetches <code>https://www.itv.com/watch/<slug></code> and parses episodes
+from the same Next.js blob. <code>programme_id</code> is used to filter
+titles when the URL doesn't itself identify the show (multi-show anchor
+pages). The returned episode dicts include both <em>episode_id</em> (the
+production_id of THIS episode, used by itvx.resolve_vod) and a
+<em>playlist_url</em> (the canonical playlist URL for this specific
+episode; passed through to the resolver to short-circuit version retry).</p>
+
+<div class="callout warn"><span class="callout-title">Pagination</span>
+<p>ITVX's catalogue page doesn't paginate at the URL level — every show
+for a genre returns in one __NEXT_DATA__ blob. This works fine for small
+genres (Comedy, News) but the Drama page is ~2MB and the page may slightly
+increase startup time on a cold cache. Caching handled at the
+<a href="default-py.html">default.py</a> layer via <code>VOD_CACHE_TTL</code>.</p>
+</div>
+</div>
+
+<footer class="site">
+<span>← Previous: <a href="bbc_vod-py.html">bbc_vod.py</a></span>
+<span>Next: <a href="c4_vod-py.html">c4_vod.py</a> →</span>
+</footer>
+</main>
+</div>
+</body>
+</html>

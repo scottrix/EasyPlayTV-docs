@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>c4.py — EasyPlayTV docs</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="../assets/style.css">
+<script src="../assets/nav.js" defer></script>
+</head>
+<body data-page="c4-py">
+<a class="skip-link" href="#main">Skip to content</a>
+<div class="layout">
+<nav class="sidebar"></nav>
+<main id="main">
+<div class="crumbs"><a href="../index.html">Home</a> <span class="sep">/</span> Files <span class="sep">/</span> c4.py</div>
+<h1>resources/lib/c4.py <small>— Channel 4 resolver (live + VOD)</small></h1>
+
+<div class="file-meta">
+<span><strong>Path</strong> <code>/resources/lib/c4.py</code></span>
+<span><strong>Lines</strong> 124</span>
+<span><strong>Type</strong> playback resolver (DASH + Widevine via Redbee)</span>
+<span><strong>← called by</strong> <a href="default-py.html">default.py:_resolve_channel</a>, <a href="default-py.html">default.py:_resolve_vod</a></span>
+<span><strong>→ calls</strong> channel4.com simulcast + VOD stream endpoints, Redbeemedia widevine license proxy, <a href="init-py.html">setup_dash_item</a></span>
+</div>
+
+<h2>Role</h2>
+<p>Resolves both live channels (Channel 4, E4, More4, Film4, 4seven) and
+on-demand programme episodes. Channel 4 wraps every stream's manifest URL
+with an AES-CBC-encrypted token that you decrypt client-side; the decrypted
+token goes into a JSON license-acquisition payload POSTed to Redbee's
+Widevine proxy.</p>
+
+<h2>Constants</h2>
+<div class="fn">
+<span class="fn-sig">URL_LICENSE = "https://c4.eme.lp.aws.redbeemedia.com/wvlicenceproxy-service/widevine/acquire" · line 12</span>
+<p>AWS-hosted Redbee Media license proxy. Same endpoint for live and VOD.</p>
+</div>
+<div class="fn">
+<span class="fn-sig">VOD_PROFILES = {"bigscreendashwv-dyn-stream-1", "dashwv-dyn-stream-1"} · line 14</span>
+<p>Two acceptable VOD profile names returned in <code>videoProfiles</code>.
+We try the first one (the bigscreendash — TV-optimized), fall back to
+<code>dashwv-</code>, finally to anything containing "dash".</p>
+</div>
+<div class="fn">
+<span class="fn-sig">AUTH_TOKEN_HEADERS = {"authorization": "Basic MzZVVUN0OThWTVF2QkFnUTI3QXU4ekdIbDMxTjlMUTE6Sllzd3lIdkdlNjJWbGlrVw=="} · line 16</span>
+<p>A static Basic-Auth credential — same as the one Channel 4's web app
+uses for its token request. Unused by the resolver today (because
+<code>_get_access_token()</code> always returns <code>None</code> at line
+32); here for the future path where the addon supports authenticated C4
+content (some shows require sign-in). The base64 blob decodes to a
+<code>client_id:client_secret</code> string for the C4 OAuth flow.</p>
+</div>
+<div class="fn">
+<span class="fn-sig">KEYS = {"amazonfire-dash": {"key": "K2C8Q09D7HJ385AB", "iv": "B3LKVU05F3IDLVME"}, "web": {"key": "n9cLieYkqwzNCqvi", "iv": "odzcU3WdUiXLucVd"}} · lines 18–21</span>
+<p>Two AES-CBC key/IV pairs — different per C4 "client" persona
+(<em>amazonfire-dash</em> = the Fire TV app's keys,
+<em>web</em> = the channel4.com web keys). Hard-coded (reverse-engineered
+from the C4 player JS). When C4 rotate these, all C4 playback breaks and
+the addon needs a key bump.</p>
+</div>
+<div class="fn">
+<span class="fn-sig">_get_access_token() → None · line 31</span>
+<p>Always returns <code>None</code>. There's an OAuth flow scaffolded but
+not wired — for now C4 content (UK-IP geofenced) plays anonymous as
+the "web" client. When you authenticate in the future, this is the hook
+point.</p>
+</div>
+
+<h2>Live resolver</h2>
+<div class="fn">
+<span class="fn-sig">resolve(item_id, listitem) · line 35</span>
+<p>Steps:</p>
+<ol>
+<li>If a non-<code>None</code> access token exists, use the
+<code>amazonfire-dash</code> client + the live-API URL; otherwise use
+<code>client="web"</code> + the live-WEB URL
+(<code>https://www.channel4.com/simulcast/channels/<ID></code>).</li>
+<li>Fetch the JSON. Read <code>channelInfo.videoProfiles</code> (the
+modern shape) or the bare <code>data.videoProfiles</code> (the legacy
+shape — line 48's <code>data.get("channelInfo", data)</code>).</li>
+<li>Look for a profile with name <em>"dashwv-live-stream-iso-dash-sp-tl"</em>
+— the standard C4 live DASH+Widevine profile. Fall back to anything
+with <em>"dash"</em> in the name verbatim.</li>
+<li>Pick <code>streams[0].token</code> (encrypted) and
+<code>streams[0].uri</code> (manifest URL).</li>
+<li>Decrypt the token with the right client's AES key+IV via
+PyCryptodome (line 65). The decrypted form is either
+<code>…&t=<token>…</code> (regex match) or <code>…|<token>|…</code>
+(split on <code>|</code>) — the resolver handles both.</li>
+<li>Build the JSON license payload:</li>
+<li style="margin-left:2em"><code>{"token": <token>, "video": {"type": "simulcast", "url": <stream_url>}, "message": "b{SSM}"}</code></li>
+<li style="margin-left:2em">The <em>"b{SSM}"</em> message tells Redbee to
+expect a binary-prefixed Widevine challenge; IA will substitute <code>{SSM}</code>
+with the actual challenge at license time.</li>
+<li>Hand to <a href="init-py.html"><code>setup_dash_item()</code></a>
+with <code>license_payload=payload</code> — this triggers the
+<em>"JBlicense"</em> terminal token (vs the usual <em>"R{SSM}"</em>)
+because we're sending the payload verbatim.</li>
+</ol>
+
+<div class="callout warn"><span class="callout-title">Manifest URL is the manifest_path</span>
+<p>The <code>stream_url</code> passed to <code>setup_dash_item</code> as
+<code>setPath()</code> at the same time is the unmodified URL C4 returned.
+That URL contains query-string params tying the manifest to this token, so
+it can't be reused for any other request — Kodi will only load it
+once.</p>
+</div>
+</div>
+
+<h2>VOD resolver</h2>
+<div class="fn">
+<span class="fn-sig">resolve_vod(programme_id, asset_id, listitem) · line 85</span>
+<p>Same shape as live but against the VOD endpoint
+<code>https://www.channel4.com/vod/stream/<ID></code>. The decrypted
+token is just split <code>|</code>[1] (VOD tokens don't use the
+<code>&t=</code> form). The license payload uses
+<code>"type": "ondemand"</code> and includes <code>"request_id":
+asset_id or programme_id</code> so Redbee can correlate the request.</p>
+
+<div class="callout warn"><span class="callout-title"><code>asset_id</code> optional, programme_id required</span>
+<p>If <code>asset_id</code> isn't supplied, the payload falls back to
+<code>programme_id</code> as the <code>request_id</code>. In practice this
+happens for C4 movies (single-asset programmes) where the caller didn't
+fetch the asset id. Multi-asset programmes (series with multiple versions
+— signed, audio-described) need the asset_id for Redbee to find the right
+license.</p>
+</div>
+</div>
+
+<footer class="site">
+<span>← Previous: <a href="sky-py.html">sky.py</a></span>
+<span>Next: <a href="itvx-py.html">itvx.py</a> →</span>
+</footer>
+</main>
+</div>
+</body>
+</html>

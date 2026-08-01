@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>stv.py — EasyPlayTV docs</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="../assets/style.css">
+<script src="../assets/nav.js" defer></script>
+</head>
+<body data-page="stv-py">
+<a class="skip-link" href="#main">Skip to content</a>
+<div class="layout">
+<nav class="sidebar"></nav>
+<main id="main">
+<div class="crumbs"><a href="../index.html">Home</a> <span class="sep">/</span> Files <span class="sep">/</span> stv.py</div>
+<h1>resources/lib/stv.py <small>— STV live resolver</small></h1>
+
+<div class="file-meta">
+<span><strong>Path</strong> <code>/resources/lib/stv.py</code></span>
+<span><strong>Lines</strong> 31</span>
+<span><strong>Type</strong> playback resolver (DASH + (optional) Widevine)</span>
+<span><strong>← called by</strong> <a href="default-py.html">default.py:_resolve_channel</a></span>
+<span><strong>→ calls</strong> STV player API, <a href="init-py.html">setup_dash_item</a></span>
+</div>
+
+<h2>Role</h2>
+<p>Resolves the two STV live channels — STV (the Scottish ITV affiliate)
+and STV +1 — to a playable manifest. The STV player API returns multiple
+streams targeted at different devices; this module picks the best one
+and configures the listitem appropriately (DASH vs HLS).</p>
+
+<h2>Constants</h2>
+<div class="fn">
+<span class="fn-sig">LIVE_API = "https://player.api.stv.tv/v1/channels/<ID>/" · line 5</span>
+<p>The single endpoint. STV is one of the few UK providers with a tidy
+public channel-info API.</p>
+</div>
+<div class="fn">
+<span class="fn-sig">HEADERS = {"User-Agent": "", "stv-drm": "true"} · line 7</span>
+<p>Two non-obvious headers:</p>
+<ul>
+<li><em>"stv-drm": "true"</em> — tells STV's API to serve the DRM-protected
+DASH manifest (with embedded Widevine PSSH) rather than the clear-AVC
+mobile stream. <a href="init-py.html"><code>setup_dash_item()</code></a>
+then receives a manifest whose Widevine LICENSE URL is inside the MPD
+itself, so we don't explicitly pass a <code>license_url</code>.</li>
+<li><em>User-Agent: ""</em> — empty on this dict; the resolver populates
+it with <a href="init-py.html"><code>get_ua()</code></a> at runtime.</li>
+</ul>
+</div>
+<div class="fn">
+<span class="fn-sig">DEVICE_PRIORITY = {"fvp_dash": 0, "desktop": 1, "mobile": 2} · line 9</span>
+<p>Order of preference among the <code>streams[*].device</code> values.
+<code>fvp_dash</code> (Freeview Play) is the highest-resolution stream STV
+exposes; <code>desktop</code> is the web tier; <code>mobile</code> is the
+least-preferred fallback. If none of the known device names match,
+<code>min(... key=DEVICE_PRIORITY.get(s, 99))</code> uses 99 → that
+unknown stream ends up last but is still selected if it's the only one.</p>
+</div>
+
+<h2>Resolver</h2>
+<div class="fn">
+<span class="fn-sig">resolve(item_id, listitem) · line 12</span>
+<p>Note one quirks upfront: <em>line 13</em> rewrites <code>stv_plusone</code>
+to <code>stv-plus-1</code> — these are the two channel_ids the addon
+exposes, but STV's API expects <em>"stv-plus-1"</em> for the +1. Then:</p>
+<ol>
+<li>Build headers from the HEADERS template with a populated UA.</li>
+<li>HTTP GET the LIVE_API.</li>
+<li>Pick the stream with the lowest device-priority via <code>min(streams, key=…)</code>.</li>
+<li>Inspect the <code>streamUrl</code>: if it ends in <code>.m3u8</code> or
+contains <code>.m3u8?</code>, treat as HLS; otherwise MPD.</li>
+<li>HLS path: bypass <a href="init-py.html"><code>setup_dash_item</code></a>
+and set the four listitem properties manually
+(<code>setPath</code>, <code>inputstream</code>,
+<code>inputstream.adaptive.manifest_type=hls</code>) — because
+<code>setup_dash_item</code> defaults to DASH license handling, which
+isn't appropriate for the simple HLS case.</li>
+<li>DASH path: call <a href="init-py.html"><code>setup_dash_item</code></a>
+with <code>manifest_type="mpd"</code>, no license URL (Widevine info is in
+the MPD itself, picked up by inputstream.adaptive's PSSH parser).</li>
+</ol>
+
+<div class="callout warn"><span class="callout-title">STV live VODs are silent on errors</span>
+<p>If <code>data.results.streams</code> is empty, the resolver raises
+<em>"STV: No streams found"</em>. The caller in
+<a href="default-py.html"><code>default.py:_resolve_channel</code></a>
+wraps in try/except and shows a notification dialog, so the user gets
+"STV: No streams found" as a popup. There's no separate error-code
+path for "outside UK geofence" — STV just returns zero streams in that
+case, so the failure mode is identical to "service is down".</p>
+</div>
+
+<footer class="site">
+<span>← Previous: <a href="bbc-py.html">bbc.py</a></span>
+<span>Next: <a href="blaze-py.html">blaze.py</a> →</span>
+</footer>
+</main>
+</div>
+</body>
+</html>

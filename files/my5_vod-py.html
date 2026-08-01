@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>my5_vod.py — EasyPlayTV docs</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="../assets/style.css">
+<script src="../assets/nav.js" defer></script>
+</head>
+<body data-page="my5_vod-py">
+<a class="skip-link" href="#main">Skip to content</a>
+<div class="layout">
+<nav class="sidebar"></nav>
+<main id="main">
+<div class="crumbs"><a href="../index.html">Home</a> <span class="sep">/</span> Files <span class="sep">/</span> my5_vod.py</div>
+<h1>resources/lib/my5_vod.py <small>— My5 catalogue</small></h1>
+
+<div class="file-meta">
+<span><strong>Path</strong> <code>/resources/lib/my5_vod.py</code></span>
+<span><strong>Lines</strong> 150</span>
+<span><strong>Type</strong> catalogue scraper (clean JSON API)</span>
+<span><strong>← called by</strong> <a href="strm-py.html">strm._fetch_*</a>, <a href="library_sync-py.html">library_sync</a> (episode fetch), <a href="my5-py.html">my5._resolve_episode_guid</a></span>
+</div>
+
+<h2>Role</h2>
+<p>Queries Channel 5's "Corona" API — a public JSON REST endpoint that
+backs the my5.tv website. The simplest of all the addon's catalogue
+scrapers: pure JSON, no HTML scraping, no auth.</p>
+
+<h2>Constants</h2>
+<div class="fn">
+<span class="fn-sig">CORONA_URL = "https://corona.channel5.com/" · URL_GENRES · URL_SHOWS · URL_SEASONS · URL_EPISODES · lines 6-10</span>
+<p>Endpoint roots. <code>URL_SHOWS = CORONA_URL + "shows/search.json"</code>;
+<code>URL_SEASONS = CORONA_URL + "shows/%s/seasons.json"</code> (one
+substitution for f_name); <code>URL_EPISODES =
+CORONA_URL + "shows/%s/seasons/%s/episodes.json"</code> (two substitutions:
+f_name and season_number).</p>
+</div>
+<div class="fn">
+<span class="fn-sig">SHOW_PARAMS = {"platform": "my5desktop", "friendly": "1"} · line 14</span>
+<p>Query-string params applied to every API call. <code>platform</code>
+is the same id <a href="my5-py.html">my5.py</a>'s Cassie uses
+(<code>my5desktopng</code> is the equivalent platform ID over there;
+the corona API uses the shorter form here). <code>friendly=1</code> asks
+for "friendly" string ids per show (the <em>f_name</em> slugs the resolver
+uses) instead of opaque GUIDs.</p>
+</div>
+<div class="fn">
+<span class="fn-sig">GENRE_LABELS = {"Film":"Films", "Drama":"Drama", "Entertainment":"Entertainment", "Documentary":"Documentaries", "Sport":"Sport", "Soap":"Soaps", "milkshake!":"Kids"} · lines 16-24</span>
+<p>My5's own genre names → addon display labels. Used inside
+<code>list_genres</code>.</p>
+</div>
+
+<h2>Helpers</h2>
+<div class="fn">
+<span class="fn-sig">_api_get(url, params=None) · line 27</span>
+<p>gzip-aware JSON fetch.</p>
+</div>
+<div class="fn">
+<span class="fn-sig">_safe_url_part(s) · line 87</span>
+<p>URL-encodes a path segment for inclusion in a My5 API URL. f_names and
+season numbers occasionally contain stray whitespace, slashes, or
+non-ASCII characters (e.g. <em>"milkshake"</em> shows with Latin-1
+characters) — this helper strips and percent-encodes them so the resulting
+URL has no spaces or unreserved chars.</p>
+</div>
+
+<h2>Listing functions</h2>
+<div class="fn">
+<span class="fn-sig">list_genres() · line 40</span>
+<p>Returns genre dicts from the clean My5 list, with labels mapped via
+<code>GENRE_LABELS</code>. Filters to entries that are plain strings —
+some entries come back as objects and we skip those (older My5 entries
+with deprecated metadata).</p>
+</div>
+<div class="fn">
+<span class="fn-sig">list_shows(genre_id, offset=0, limit=40) → tuple[shows, total_entries] · line 52</span>
+<p>The search endpoint with offset/limit pagination. Returns the show list
+plus the total number of entries in the genre (so the caller knows when
+to stop iterating). Each show dict has <em>f_name</em>, <em>title</em>,
+<em>image</em>, <em>description</em>, <em>standalone</em> — the standalone
+flag indicating single-episode programmes (films).</p>
+</div>
+<div class="fn">
+<span class="fn-sig">list_seasons(f_name) · line 61</span>
+<p>Lists the seasons for a show f_name. Strips stray whitespace from each
+season number (some My5 entries carry <em>"2 "</em> with a trailing space
+which produces malformed URLs like <code>/seasons/2 /episodes.json</code>
+and crash with <em>"URL can't contain control characters"</em>). Normalizes
+to integer when possible. Returns a synthetic "Season 1" entry if no
+seasons are returned (covers standalone shows that don't expose a season
+explicitly).</p>
+</div>
+<div class="fn">
+<span class="fn-sig">list_episodes(f_name, season_number) · line 94</span>
+<p>The per-season episode list. Each episode dict includes
+<em>episode_id</em> (the GUID starting with "C" that
+<a href="my5-py.html">my5.py:_fetch_cassie</a> needs), <em>f_name</em>
+(sometimes an alternate id — passed through to the resolver as a fallback
+identifier), <em>title</em>, <em>image</em>, <em>episode_number</em>,
+<em>series_number</em>.</p>
+</div>
+<div class="fn">
+<span class="fn-sig">get_standalone_episode_id(f_name) · (helper)</span>
+<p>For standalone movies (a f_name that's actually a single-episode
+programme rather than a series) — finds the GUID that my5.py needs to
+make the Cassie call. Walks the seasons/episodes lists under the hood.
+Used by <a href="my5-py.html">my5.resolve_vod</a> when
+<code>standalone=True</code>.</p>
+</div>
+
+<footer class="site">
+<span>← Previous: <a href="c4_vod-py.html">c4_vod.py</a></span>
+<span>Next: <a href="stv_vod-py.html">stv_vod.py</a> →</span>
+</footer>
+</main>
+</div>
+</body>
+</html>

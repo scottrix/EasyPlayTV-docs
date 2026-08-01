@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>blaze.py — EasyPlayTV docs</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="../assets/style.css">
+<script src="../assets/nav.js" defer></script>
+</head>
+<body data-page="blaze-py">
+<a class="skip-link" href="#main">Skip to content</a>
+<div class="layout">
+<nav class="sidebar"></nav>
+<main id="main">
+<div class="crumbs"><a href="../index.html">Home</a> <span class="sep">/</span> Files <span class="sep">/</span> blaze.py</div>
+<h1>resources/lib/blaze.py <small>— Blaze TV live resolver</small></h1>
+
+<div class="file-meta">
+<span><strong>Path</strong> <code>/resources/lib/blaze.py</code></span>
+<span><strong>Lines</strong> 36</span>
+<span><strong>Type</strong> playback resolver (HLS or DASH, no DRM)</span>
+<span><strong>← called by</strong> <a href="default-py.html">default.py:_resolve_channel</a></span>
+<span><strong>→ calls</strong> watch.blaze.tv HTML scrape + Blaze stream API, <a href="init-py.html">setup_dash_item</a></span>
+</div>
+
+<h2>Role</h2>
+<p>Resolves Blaze TV's live channel. Blaze is a free-to-air reality-TV
+channel — no DRM, no auth, just two HTML scrapes on the way to the
+manifest URL.</p>
+
+<h2>Constants</h2>
+<div class="fn">
+<span class="fn-sig">URL_LIVE = "https://watch.blaze.tv/live/<ID>" · line 5</span>
+<p>Blaze's public-facing live page. <code>item_id</code> maps to Blaze's
+internal uvid; there's a small known set of fallbacks — line 11-12:
+<code>("1227", "1228", "1229", "1235", "1236")</code> are the recognized
+"live" stream ids; anything else falls back to <code>"553"</code> (the
+default national feed).</p>
+</div>
+<div class="fn">
+<span class="fn-sig">URL_STREAM = "%s/streams/api/live/stream/<UVID>?key=<KEY>&autoplay=1&gpdr=1&gpdr_consent=undefined&platform=chrome" · line 6</span>
+<p>The actual stream-info API endpoint. <code>%s</code> is the
+<code>stream_base</code> scraped out of the live page (it varies). The
+<code>key</code> is per-page per-uvid, scraped out of the same page.</p>
+</div>
+
+<h2>Resolver</h2>
+<div class="fn">
+<span class="fn-sig">resolve(item_id, listitem) · line 9</span>
+<p>Steps:</p>
+<ol>
+<li>Fetch the live HTML page.</li>
+<li>Regex-match the <code>"streams": "<…blaze.tv/streams/…"</code>
+config in the HTML — this is the stream-base URL with escape backslashes
+that the JSON in HTML uses.</li>
+<li>Regex-match all <code>data-key="<…>"</code> and
+<code>data-uvid="<…>"</code> entries on the page.</li>
+<li>Pair them up via <code>zip(keys, uvids)</code> and pick the pair
+whose uvid equals <code>item_id</code>. Fall back to the first pair if
+no exact match (line 28).</li>
+<li>Fetch the stream-info API; it returns JSON with
+<code>response.stream</code> — the actual m3u8/mpd URL, with a query
+string we strip off via <code>.split("?", 1)[0]</code> (Blaze appends
+auth tokens that aren't required for playback from a UK IP).</li>
+<li>Inspect the URL: HLS if <code>.m3u8</code> in the URL, otherwise
+DASH.</li>
+<li>Hand to <a href="init-py.html"><code>setup_dash_item</code></a> with
+the right <code>manifest_type</code>. No license URL — Blaze is
+unprotected.</li>
+</ol>
+
+<div class="callout warn"><span class="callout-title">The regex is fragile</span>
+<p>If Blaze's static-HTML team changes the <code>"streams":"…"</code> JSON
+config shape, this resolver breaks instantly. There's no JSON-RPC API
+ Blaze exposes for the live stream. They've been stable for ~2 years as
+of writing, which is the only reason the addon still ships this. Worth
+fixing with a JSON-parser fallback to a <code><script type="application/json"></code>
+block if one's ever shipped.</p>
+</div>
+
+<footer class="site">
+<span>← Previous: <a href="stv-py.html">stv.py</a></span>
+<span>Next: <a href="sky-py.html">sky.py</a> →</span>
+</footer>
+</main>
+</div>
+</body>
+</html>

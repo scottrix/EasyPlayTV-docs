@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>strm.py — EasyPlayTV docs</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="../assets/style.css">
+<script src="../assets/nav.js" defer></script>
+</head>
+<body data-page="strm-py">
+<a class="skip-link" href="#main">Skip to content</a>
+<div class="layout">
+<nav class="sidebar"></nav>
+<main id="main">
+<div class="crumbs"><a href="../index.html">Home</a> <span class="sep">/</span> Files <span class="sep">/</span> strm.py</div>
+<h1>resources/lib/strm.py <small>— URL builders & show fetchers</small></h1>
+
+<div class="file-meta">
+<span><strong>Path</strong> <code>/resources/lib/strm.py</code></span>
+<span><strong>Lines</strong> 362</span>
+<span><strong>Type</strong> URL synthesis + provider-listing aggregator</span>
+<span><strong>← called by</strong> <a href="library_sync-py.html">library_sync.py</a> (sync_movies_direct, sync_series_direct, remove_stale_*)</span>
+<span><strong>→ calls</strong> all <code>*_vod.py</code> providers, <a href="init-py.html">safe_filename</a></span>
+</div>
+
+<h2>Role</h2>
+<p>Two responsibilities despite the legacy name (back when the addon wrote
+<code>.strm</code> files on disk):</p>
+<ol>
+<li><strong>Show aggregation</strong> — call every provider's
+<code>list_shows</code> for every unified genre and return a single flat
+list with <code>provider</code>, <code>_genre_id</code>, <code>_nav_mode</code>,
+and the provider-specific <code>_nav_*</code> fields baked in.</li>
+<li><strong>URL synthesis</strong> — given one of those show dicts (or a
+single episode dict from <code>list_episodes</code>), build a
+<code>plugin://plugin.video.easyplaytv/?action=resolve_vod&provider=…&episode_id=…&…</code>
+URL that Kodi's plugin entry point can route to the right resolver.</li>
+</ol>
+
+<h2>Dead variables (don't be confused)</h2>
+<div class="callout warn"><span class="callout-title">STRM_MOVIES_DIR, STRM_SERIES_DIR, STATE_FILE all dead</span>
+<p>Lines 13–15 still define这三个 constants, but they're no longer used as file
+paths — the addon removed all <code>.strm</code> file IO in the path-migration
+cleanup (see <a href="../pages/path-migration.html">migration log</a>).
+<code>STRM_MOVIES_DIR</code> / <code>STRM_SERIES_DIR</code> are referenced by
+nothing; <code>STATE_FILE = strm_state.json</code> was deleted from disk
+and the live state file used by
+<a href="library_sync-py.html"><code>library_sync.py</code></a> is
+<code>library_sync_state.json</code> + <code>series_sync_state.json</code>
+instead. These are kept purely as a historical reference — you can safely
+delete them in a refactor.</p>
+</div>
+
+<h2>Provider import dispatcher</h2>
+<div class="fn">
+<span class="fn-sig">_import_vod(provider) → module | None · line 28</span>
+<p>Lazy-imports the right <code>*_vod</code> module for a provider name.
+The try/except pattern handles two import conventions — Kodi's
+<code>resources.lib.bbc_vod</code> vs. the same module imported bare
+(<code>bbc_vod</code>) for tests run outside Kodi.</p>
+</div>
+
+<h2>Films / series fetchers</h2>
+<div class="fn">
+<span class="fn-sig">_fetch_movies() → list[dict] · line 67</span>
+<p>The movie catalog aggregator. Iterates <code>UNIFIED_GENRES</code> for
+the <code>films</code> genre only, then per-provider per-genre call lists
+the films with provider-appropriate pagination:</p>
+<table>
+<thead><tr><th>Provider</th><th>Pagination</th></tr></thead>
+<tbody>
+<tr><td>BBC</td><td>Page-based loop until <code>cur_page >= total_pages</code></td></tr>
+<tr><td>My5</td><td>Offset-based with 100-row limit, stops when <code>offset >= total_entries</code></td></tr>
+<tr><td>ITVX</td><td>Single call — ITVX paginates internally and returns the full category payload</td></tr>
+<tr><td>C4</td><td>Single call with <code>limit=9999</code> — C4's API caps at ~10k rows</td></tr>
+<tr><td>STV</td><td>Filters to <code>show.standalone == True</code> only (single-film programmes)</td></tr>
+</tbody>
+</table>
+<p>Each show dict gets <code>s["provider"] = "<name>"</code> added so
+downstream code knows where it came from.</p>
+</div>
+
+<div class="fn">
+<span class="fn-sig">_fetch_series_shows() → list[dict] · line 284</span>
+<p>The series equivalent — iterates every unified genre <em>except</em>
+<code>films</code>. More importantly, it tags each show with
+<code>_nav_mode</code> (either <code>"playable"</code> for
+standalone/movie-like shows or <code>"series"</code> for shows with multiple
+episodes) and the provider-specific <code>_nav_*</code> fields that
+<a href="library_sync-py.html"><code>sync_series_direct</code></a> uses to
+fetch seasons/episodes:</p>
+<table>
+<thead><tr><th>Provider</th><th>Series mode fields</th><th>Playable mode condition</th></tr></thead>
+<tbody>
+<tr><td>BBC</td><td><code>_nav_pid</code></td><td><code>show.get("standalone") and show.get("episode_id")</code></td></tr>
+<tr><td>My5</td><td><code>_nav_f_name</code></td><td><code>show.get("standalone")</code></td></tr>
+<tr><td>ITVX</td><td><code>_nav_prog_id</code>, <code>_nav_slug</code></td><td><code>show.get("standalone") and show.get("episode_id")</code></td></tr>
+<tr><td>C4</td><td><code>_nav_f_name</code></td><td>always series (C4 doesn't tag standalone at API level)</td></tr>
+<tr><td>STV</td><td><code>_nav_f_name</code></td><td><code>show.get("standalone")</code></td></tr>
+</tbody>
+</table>
+<p>The <code>_nav_*</code> pre-pass means <code>sync_series_direct</code>
+doesn't have to know each provider's id-field naming.</p>
+</div>
+
+<h2>Movie URL builder</h2>
+<div class="fn">
+<span class="fn-sig">_build_strm_url(show) → str | None · line 119</span>
+<p>Builds a play URL for a movie show. Returns <code>None</code> if the
+show isn't standalone (it's actually a series — movies that are
+multi-episode specials shouldn't be treated as a single-play movie). For
+providers where <em>every</em> film needs an episode lookup (C4, STV),
+this function does a live season-list call to find the single
+episode:</p>
+<ul>
+<li><strong>BBC</strong>: <code>resolve_vod&provider=bbc&episode_id=<episode_id>&title=…</code></li>
+<li><strong>My5</strong>: <code>resolve_vod&provider=my5&episode_id=<f_name>&standalone=1&title=…</code></li>
+<li><strong>ITVX</strong>: <code>resolve_vod&provider=itvx&episode_id=…&title=…&playlist_url=<quoted></code></li>
+<li><strong>C4</strong>: calls <code>c4_vod.list_seasons(f_name)</code>,
+requires exactly 1 episode, builds URL with both
+<code>programme_id</code> and <code>asset_id</code></li>
+<li><strong>STV</strong>: iterates <code>stv_vod.list_seasons()</code>,
+then iterates the result for the first <code>video_id</code> it finds
+with a DRM flag</li>
+</ul>
+<p>Note: All URLs are URL-encoded via <code>safe_filename(show["title"])</code>
+for the title parameter.</p>
+<div class="callout danger"><span class="callout-title">Known bug — STV branch (line 173)</span>
+<p>The STV branch references <code>episodes</code> at line 173 without
+defining it — looks like a refactor removed
+<code>episodes = vod.list_episodes(...)</code> but missed the
+<code>if not episodes: return None</code> guard. The code will throw a
+<code>NameError</code> on first STV movie. In practice nobody's noticed
+because STV's "films" catalogue is mostly empty in the production library.
+Worth fixing; tag a one-liner <code>episodes = vod.list_episodes(f_name, series_guid=series_guid)</code>
+back in.</p>
+</div>
+</div>
+
+<h2>Episode URL builder</h2>
+<div class="fn">
+<span class="fn-sig">_build_episode_strm_url(provider, episode) → str | None · line 201</span>
+<p>Builds a play URL for a single episode within a series. Always includes
+the season + episode numbers in the URL via the <code>_se()</code> helper
+(lines 216-222) — even though the resolver doesn't strictly need them, the
+plugin entry-point reads them onto the listitem's <code>setInfo</code>
+so Kodi caches consistent SxxExx metadata for the played file. Without
+them, the displayed <code>1x01.</code> prefix disappears after playback
+because the player's metadata overwrites the folder's listitem metadata
+(see the inline comment at line 205).</p>
+
+<table>
+<thead><tr><th>Provider</th><th>Extra params beyond <code>episode_id</code>, <code>title</code>, <code>season</code>, <code>episode</code></th></tr></thead>
+<tbody>
+<tr><td>BBC</td><td><code>show_title</code> (extracted via <code>_bbc_ep_title</code>)</td></tr>
+<tr><td>My5</td><td><code>standalone=0/1</code>, <code>show_f_name</code>, <code>f_name</code> (if different)</td></tr>
+<tr><td>ITVX</td><td><code>playlist_url</code> (URL-encoded)</td></tr>
+<tr><td>C4</td><td><code>asset_id</code></td></tr>
+<tr><td>STV</td><td><code>drm_enabled=0/1</code></td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="fn">
+<span class="fn-sig">_bbc_ep_title(ep, en_int) → str · line 190</span>
+<p>Helper for BBC episode titles. BBC programmes often have a "Series N:"
+subtitle pattern; this strips that prefix and falls back to the bare
+subtitle or just <code>"Episode N"</code>. Used only inside
+<code>_build_episode_strm_url</code> for BBC.</p>
+</div>
+
+<h2>Cross-file interactions</h2>
+<ul>
+<li>Importing <a href="init-py.html"><code>safe_filename</code></a> for title normalisation across all URL builders.</li>
+<li>Calling <code>c4_vod.list_seasons()</code> and <code>stv_vod.list_seasons()</code>
+inline within <code>_build_strm_url</code> — these are sync-time HTTP fetches,
+so the cost is folded into the slower of the two paths (movie catalog
+fetch).</li>
+<li>Returning flat lists that <a href="library_sync-py.html"><code>library_sync.sync_series_direct</code></a>
+filters by <code>_nav_mode == "series"</code> and <code>provider</code>.</li>
+</ul>
+
+<footer class="site">
+<span>← Previous: <a href="library_sync-py.html">library_sync.py</a></span>
+<span>Next: <a href="my5-py.html">my5.py</a> →</span>
+</footer>
+</main>
+</div>
+</body>
+</html>

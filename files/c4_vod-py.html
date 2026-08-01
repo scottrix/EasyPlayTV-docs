@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>c4_vod.py — EasyPlayTV docs</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="../assets/style.css">
+<script src="../assets/nav.js" defer></script>
+</head>
+<body data-page="c4_vod-py">
+<a class="skip-link" href="#main">Skip to content</a>
+<div class="layout">
+<nav class="sidebar"></nav>
+<main id="main">
+<div class="crumbs"><a href="../index.html">Home</a> <span class="sep">/</span> Files <span class="sep">/</span> c4_vod.py</div>
+<h1>resources/lib/c4_vod.py <small>— Channel 4 catalogue</small></h1>
+
+<div class="file-meta">
+<span><strong>Path</strong> <code>/resources/lib/c4_vod.py</code></span>
+<span><strong>Lines</strong> 212</span>
+<span><strong>Type</strong> catalogue scraper (HTML + <code>__PARAMS__</code> inline JSON)</span>
+<span><strong>← called by</strong> <a href="strm-py.html">strm._fetch_*</a>, <a href="library_sync-py.html">library_sync</a> (episode fetch), <a href="default-py.html">default.py:list_vod_seasons</a></span>
+<span><strong>→ calls</strong> channel4.com categories + brand HTML pages</span>
+</div>
+
+<h2>Role</h2>
+<p>Scrapes channel4.com's category listing (a JSON-returning query-string
+mode) and per-brand detail pages. The brand pages embed an enormous JSON
+blob inside a <code>__PARAMS__</code> JS variable (Fox's internal page-data
+serialization — Channel 4's site is built on a custom SSR framework
+rather than Next.js like ITVX).</p>
+
+<h2>Constants</h2>
+<div class="fn">
+<span class="fn-sig">URL_CATEGORY_SHOWS = "https://www.channel4.com/categories/<slug>" · URL_BRAND = "https://www.channel4.com/programmes/<slug>" · URL_VOD_STREAM = "https://www.channel4.com/vod/stream/<id>" · lines 9-11</span>
+<p>Three URL roots.</p>
+</div>
+<div class="fn">
+<span class="fn-sig">GENRE_SLUGS = {"drama":"drama", "comedy":"comedy", "documentaries":"factual", ...} · lines 13-22</span>
+<p>Translation table from addon-unified-genre slugs (key) — what
+<a href="genres-py.html">genres.py</a>'s UNIFIED_GENRES uses — to C4's own
+URL slug (value). Note C4 puts documentaries and factual-history-and-
+arts under the single "factual" category.</p>
+</div>
+
+<h2>API helpers</h2>
+<div class="fn">
+<span class="fn-sig">_api_get(url, params=None, ua=None) · line 25</span>
+<p>Standard gzip-aware fetch with optional query-string parameters.</p>
+</div>
+<div class="fn">
+<span class="fn-sig">_extract_brand_data(html) → dict | None · line 38</span>
+<p>The interesting helper. Brand pages have an inline <code>__PARAMS__ = {…};</code>
+JavaScript object — a deeply-nested JSON blob describing the show. We:</p>
+<ol>
+<li>Find the substring <em>"__PARAMS__"</em>.</li>
+<li>Track to the next <code>{</code> — that's the start of the JSON.</li>
+<li>Walk character-by-character with a brace-depth counter until depth returns to zero.</li>
+<li>Replace JS <code>undefined</code> with JSON <code>null</code> so <code>json.loads</code> doesn't choke.</li>
+<li>Wrap in <code>json.loads(...)</code>.</li>
+</ol>
+
+<div class="callout warn"><span class="callout-title">4 MB cap — long-running daily strips</span>
+<p>Line 50:
+<code>for i in range(start_pos, min(len(html), start_pos + 4_000_000))</code>.
+Long-running daily strips (Come Dine with Me, The Bill) produce
+<code>__PARAMS__</code> JSON blocks over 600 KB. Without the cap raised to
+4 MB these shows used to silently drop the brand data and fall through to
+the "no episodes" path, producing empty/partial library entries. 4 MB
+matches ITVX's largest known brand page.</p>
+</div>
+</div>
+
+<h2>Listing functions</h2>
+<div class="fn">
+<span class="fn-sig">list_shows(genre_slug, offset=0, limit=60) · line 66</span>
+<p>Iterates paginated category lookups by appending
+<code>?json=true&offset=<N>&sort=title</code>. C4 returns a JSON
+envelope with <code>brands.items[]</code> and <code>noOfShows</code>.</p>
+
+<div class="callout warn"><span class="callout-title">Films filter — line 84 onward</span>
+<p>The category API does NOT expose <code>programmeType</code> (only the
+brand page does), but it DOES tag films two equivalent ways:
+<code>expandedTile.availableContent == "Film"</code> and
+<code>"Film"</code> appears in <code>expandedTile.genres</code>. Films
+appear under drama/comedy/etc. categories (e.g. "Boiling Point", "The
+Banshees of Inisherin") with no series — including them in the series
+catalog created ~67 stray 1-episode film rows per C4 sync. The filter at
+lines 96-97 skips both signals so neither a single <code>ac=None</code>
+legacy film nor a fresh entry slips through.</p>
+</div>
+</div>
+
+<div class="fn">
+<span class="fn-sig">list_seasons(websafe_title) → tuple[list[season], list[episode]] · line 115</span>
+<p>Two passes — fetches the brand page, parses <code>__PARAMS__</code>,
+splits into seasons and a flat list of all episodes. Each season has a
+series_number; each episode has asset_id, programme_id, series_number,
+episode_number, title. The dual return shape (seasons + all episodes) is
+so the caller can either:
+a) show a seasons listing UI (default.py), or
+b) group episodes by series_number (library_sync's collection).</p>
+</div>
+<div class="fn">
+<span class="fn-sig">list_episodes(websafe_title, series_number) · line 210</span>
+<p>Single-season episode list. Calls <code>list_seasons</code> internally
+and filters to the requested series_number. Used by the UI's
+per-season browse.</p>
+</div>
+<div class="fn">
+<span class="fn-sig">get_episodes_for_series(all_episodes, series_number) · (helper)</span>
+<p>Tiny utility used by <a href="library_sync-py.html">library_sync</a> to
+filter the already-fetched <code>list_seasons</code> result without
+re-fetching. Updates each episode dict with its series_number so
+sync_series_direct can group/tag consistently.</p>
+</div>
+
+<footer class="site">
+<span>← Previous: <a href="itvx_vod-py.html">itvx_vod.py</a></span>
+<span>Next: <a href="my5_vod-py.html">my5_vod.py</a> →</span>
+</footer>
+</main>
+</div>
+</body>
+</html>

@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>stv_vod.py — EasyPlayTV docs</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="../assets/style.css">
+<script src="../assets/nav.js" defer></script>
+</head>
+<body data-page="stv_vod-py">
+<a class="skip-link" href="#main">Skip to content</a>
+<div class="layout">
+<nav class="sidebar"></nav>
+<main id="main">
+<div class="crumbs"><a href="../index.html">Home</a> <span class="sep">/</span> Files <span class="sep">/</span> stv_vod.py</div>
+<h1>resources/lib/stv_vod.py <small>— STV catalogue</small></h1>
+
+<div class="file-meta">
+<span><strong>Path</strong> <code>/resources/lib/stv_vod.py</code></span>
+<span><strong>Lines</strong> 349</span>
+<span><strong>Type</strong> catalogue scraper (JSON API + Brightcove playback scraping)</span>
+<span><strong>← called by</strong> <a href="strm-py.html">strm._fetch_*</a>, <a href="library_sync-py.html">library_sync.sync_series_direct</a> (episode fetch)</span>
+<span><strong>→ calls</strong> player.api.stv.tv JSON + Brightcove player JS bundle, optional STV cache dir</span>
+</div>
+
+<h2>Role</h2>
+<p>STV's catalogue sits behind a clean JSON API at
+<code>player.api.stv.tv/v1</code>. This module wraps it. It also fetches
+Brightcove account/player/policy-key data via the STV player's
+<code>bundle.js</code> — STV's VOD streams are Brightcove-hosted and
+need the same <code>pk=<policy_key></code> header approach as
+<a href="sky-py.html">sky.py</a> uses for live.</p>
+
+<h2>Constants</h2>
+<div class="fn">
+<span class="fn-sig">API_BASE = "https://player.api.stv.tv/v1" · URL_PROGRAMMES · URL_CATEGORIES · URL_EPISODES · URL_STREAMS · lines 10-14</span>
+<p>STV's API roots.</p>
+</div>
+<div class="fn">
+<span class="fn-sig">URL_BRIGHTCOVE_BUNDLE = "https://player.stv.tv/player-web/players/vod/bundle.js" · BC_PLAYBACK_URL = "https://edge.api.brightcove.com/playback/v1/accounts/<acct>/videos/<id>" · lines 15-16</span>
+<p>For Brightcove playback — the bundle.js file contains the
+<code>PLAYER_ID</code>, <code>ACCOUNT_ID</code>, and <code>POLICY_KEY</code>
+constants — regexed out of the JS source by <em>RE_PLAYER</em>,
+<em>RE_ACCOUNT</em>, <em>RE_KEY</em> (lines 18-20).</p>
+</div>
+<div class="fn">
+<span class="fn-sig">GENRE_MAP = {"dramas":"drama", "entertainment":"entertainment", "crime-punishment":"true-crime", "documentaries":"documentaries", ...} · lines 22-41</span>
+<p>STV-specific genre slugs (keys) → addon unified genres (values). STV
+has more finely-sliced genres than any other provider (soaps, history-hit,
+wonder, real-stories, real-life, real-crime, crime-drama, legal-drama,
+thrillers, comedy-drama, daytime) — most map onto the same unified
+buckets per the
+<a href="genres-py.html">genres.py:UNIFIED_GENRES</a> mapping.</p>
+</div>
+<div class="fn">
+<span class="fn-sig">UNIFIED_GENRE_MAP · lines 43-54</span>
+<p>The reverse map — given an addon unified genre, find the STV API genre
+slug. Used by <code>list_shows</code> to translate the user's UI tap into
+an STV-API-friendly slug.</p>
+</div>
+
+<h2>API helpers</h2>
+<div class="fn">
+<span class="fn-sig">_api_get(url, params=None, timeout=20) · line 57</span>
+<p>gzip-aware JSON fetch, with the STV-standard <em>"stv-drm: true"</em>
+header so the API yields DASH+DRM streams. Same header as
+<a href="stv-py.html">stv.py:HEADERS</a> for live.</p>
+</div>
+<div class="fn">
+<span class="fn-sig">_img_url(image_id, width=300, height=400) · line 69</span>
+<p>STV's image API redirects to a sized rendition. Default 300x400 portrait
+poster is the addon's standard size.</p>
+</div>
+<div class="fn">
+<span class="fn-sig">_thumbnail(images) · line 73</span>
+<p>Reaches into the <em>images</em> array on a programme/episode — handles
+two formats: modern (with <code>id</code>) and legacy (with
+<code>_filepath</code> placeholders for width/height interpolation).</p>
+</div>
+
+<h2>Listing functions</h2>
+<div class="fn">
+<span class="fn-sig">list_categories() · line 85</span>
+<p>Fetches /categories and filters out a list of categories we don't
+expose in the UI (line 90's set: <em>top-picks, radio-podcasts,
+audio-described, visually-signed, archive, new-talent, so-real,
+paranormal</em>) — they're either internally-curated collections rather
+than genres (top-picks) or radio/metadata we don't have UI for.</p>
+</div>
+<div class="fn">
+<span class="fn-sig">list_shows(category_guid, offset=0, limit=200) · line 97</span>
+<p>Per-category programme listing. Uses a large limit (200) so most STV
+genres return in one page; if a genre has more, the caller paginates.
+Returns a tuple (shows, total_entries). Each show dict has
+<em>guid</em> (programme GUID), <em>f_name</em>, <em>title</em>,
+<em>description</em>, <em>image</em>, <em>standalone</em> (single-episode
+flag).</p>
+</div>
+<div class="fn">
+<span class="fn-sig">list_shows_all() · line 106</span>
+<p>Iterates every STV category and accumulates all shows — used by
+<a href="strm-py.html"><code>strm._fetch_series_shows</code></a> when
+caller passes the genre-bypass / "show all STV shows" route. Dedupes by
+f_name across the multiple genres a programme may appear in.</p>
+</div>
+<div class="fn">
+<span class="fn-sig">list_seasons(programme_guid) · line 146</span>
+<p>Per-programme seasons. Returns a list with each season's
+<em>guid</em>, <em>season_number</em>, and <em>title</em>.</p>
+</div>
+<div class="fn">
+<span class="fn-sig">list_episodes(programme_guid, series_guid=None, offset=0, limit=50) · line 213</span>
+<p>Per-programme episode listing. If <code>series_guid</code> is set,
+filters to that single season. Returns 50-per-page (parameter chosen
+to keep responses under ~3MB on big soaps like Emmerdale).</p>
+
+<div class="callout danger"><span class="callout-title">episodes with <code>episode_number=0</code> are real</span>
+<p>STV returns episodes with <code>episode_number=0</code> when
+<code>playerSeries</code> is null — single-episode documentaries AND
+entire programmes without per-episode index info (Coronation Street,
+Emmerdale daily strips). library_sync drops <code>episode_number=0</code>
+via its <code>if en_int < 1: continue</code> guard, which previously
+caused hundreds of empty-show rows. The pre-pass in
+<a href="library_sync-py.html"><code>sync_series_direct</code></a>
+at lines 858+ renumbers them sequentially from 1 within their season
+block. Important: the cataloguer doesn't lie about the episode numbers;
+the sync engine's renumber is the workaround for STV's incomplete metadata.</p>
+</div>
+</div>
+
+<h2>STV cache</h2>
+<p>This module caches per-show JSON responses in a
+<code>stv_cache/</code> directory inside the addon profile — listing
+every STV catalogue page every 6h gave us ~535 HTTP calls per sync
+which is wasteful since the catalogue only changes weekly. The cache is
+managed by helper code at the bottom of the file (around line ~270+).</p>
+
+<footer class="site">
+<span>← Previous: <a href="my5_vod-py.html">my5_vod.py</a></span>
+<span>Next: <a href="blaze_vod-py.html">blaze_vod.py</a> →</span>
+</footer>
+</main>
+</div>
+</body>
+</html>

@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Provider matrix — EasyPlayTV docs</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="../assets/style.css">
+<script src="../assets/nav.js" defer></script>
+</head>
+<body data-page="provider-matrix">
+<a class="skip-link" href="#main">Skip to content</a>
+<div class="layout">
+<nav class="sidebar"></nav>
+<main id="main">
+<div class="crumbs"><a href="../index.html">Home</a> <span class="sep">/</span> Provider matrix</div>
+<h1>Provider matrix</h1>
+
+<p>The seven providers the addon supports, side by side. For detail
+on any one provider click its catalogue/resolver page.</p>
+
+<h2>Capability matrix</h2>
+<table>
+<thead><tr>
+<th>Provider</th><th>Live</th><th>VOD</th><th>Auth</th><th>DRM</th><th>Catalogue fetch</th><th>Sync frequency</th>
+</tr></thead>
+<tbody>
+<tr><td><a href="../files/bbc-py.html">BBC iPlayer</a></td><td><span class="pill ok">yes</span></td><td><span class="pill ok">yes</span></td><td>none (UK-IP geofenced)</td><td>none (clear DASH)</td><td><a href="../files/bbc_vod-py.html">HTML scrape (__IPLAYER_REDUX_STATE__)</a></td><td>BBC</td></tr>
+<tr><td><a href="../files/itvx-py.html">ITVX</a></td><td><span class="pill ok">yes</span></td><td><span class="pill ok">yes</span></td><td>OAuth (JWT, refresh-token + 4h proactive)</td><td>Widevine L3</td><td><a href="../files/itvx_vod-py.html">HTML scrape (__NEXT_DATA__)</a></td><td>ITVX</td></tr>
+<tr><td><a href="../files/c4-py.html">Channel 4</a></td><td><span class="pill ok">yes</span></td><td><span class="pill ok">yes</span></td><td>none (anonymous web client)</td><td>Widevine via Redbeemedia</td><td><a href="../files/c4_vod-py.html">HTML + __PARAMS__ inline JSON</a></td><td>C4</td></tr>
+<tr><td><a href="../files/my5-py.html">My5</a></td><td><span class="pill ok">yes</span></td><td><span class="pill ok">yes</span></td><td>HMAC + AES keys extracted from live C5 player JS</td><td>Widevine</td><td><a href="../files/my5_vod-py.html">JSON API (corona.channel5.com)</a></td><td>My5</td></tr>
+<tr><td><a href="../files/stv-py.html">STV</a></td><td><span class="pill ok">yes</span></td><td><span class="pill ok">yes</span></td><td>none (free)</td><td>Widevine (PSSH in MPD)</td><td><a href="../files/stv_vod-py.html">JSON API (player.api.stv.tv)</a></td><td>STV</td></tr>
+<tr><td><a href="../files/blaze-py.html">Blaze TV</a></td><td><span class="pill ok">yes</span></td><td><span class="pill ok">yes</span></td><td>none</td><td>none</td><td><a href="../files/blaze_vod-py.html">HTML scrape</a></td><td>Blaze</td></tr>
+<tr><td><a href="../files/sky-py.html">Sky News</a></td><td><span class="pill ok">yes</span></td><td><span class="pill muted">no</span></td><td>none (XFF spoof)</td><td>Widevine optional</td><td>— (single channel)</td><td>—</td></tr>
+</tbody>
+</table>
+
+<h2>Endpoint matrix</h2>
+<table>
+<thead><tr>
+<th>Provider</th><th>Catalogue endpoint</th><th>Stream-resolve endpoint</th><th>License endpoint</th>
+</tr></thead>
+<tbody>
+<tr><td>BBC</td><td><code>bbc.co.uk/iplayer/categories/<slug>/all?page=N</code> (HTML)</td><td><code>open.live.bbc.co.uk/mediaselector/6/.../vpid/<ID>/json</code></td><td>— (clear)</td></tr>
+<tr><td>ITVX</td><td><code>www.itv.com/watch/categories/<slug></code> (HTML, Next.js)</td><td><code>magni.itv.com/playlist/itvonline/ITV/<id></code> (live: simulcast.itv.com)</td><td>From playlist response's <code>KeyServiceUrl</code></td></tr>
+<tr><td>Channel 4</td><td><code>channel4.com/categories/<slug>?json=true&offset=N&sort=title</code></td><td><code>channel4.com/vod/stream/<id></code> (live: <code>simulcast/channels/<id></code>)</td><td><code>c4.eme.lp.aws.redbeemedia.com/.../acquire</code> (Redbee, fixed)</td></tr>
+<tr><td>My5</td><td><code>corona.channel5.com/shows/search.json</code> + seasons/episodes</td><td><code>cassie.channel5.com/api/v2/{media|live_media}/my5desktopng/<guid>.json</code></td><td>From Cassie response's <code>keyserver</code></td></tr>
+<tr><td>STV</td><td><code>player.api.stv.tv/v1/programmes</code></td><td><code>player.api.stv.tv/v1/channels/<id>/</code> (live); Brightcove Playback API (VOD)</td><td>From Brightcove response's <code>key_systems</code></td></tr>
+<tr><td>Blaze</td><td><code>watch.blaze.tv/series</code> (HTML)</td><td><code>watch.blaze.tv/streams/api/{replay|live}/stream/<uvid></code></td><td>— (no DRM)</td></tr>
+<tr><td>Sky News</td><td>—</td><td>Brightcove Playback API</td><td>From Brightcove response's <code>key_systems</code></td></tr>
+</tbody>
+</table>
+
+<h2>User-Agent strategy</h2>
+<table>
+<thead><tr><th>Provider</th><th>UA</th><th>Reason</th></tr></thead>
+<tbody>
+<tr><td>BBC</td><td>shared desktop Chrome (from <a href="../files/init-py.html">get_ua()</a>)</td><td>BBC doesn't sniff aggressively</td></tr>
+<tr><td>ITVX catalog</td><td>Firefox 145 (hardcoded)</td><td>ITV sniffs and blocks the desktop-Chrome UA when there's a UA/JWT mismatch on session</td></tr>
+<tr><td>ITVX playlist</td><td>Firefox 131 (hardcoded)</td><td>Tighter sniff at the auth-gated endpoint</td></tr>
+<tr><td>Channel 4</td><td>shared desktop Chrome</td><td>C4's web client uses different UAs for different endpoints (apple universal vs desktop); we mimic the desktop-website client</td></tr>
+<tr><td>My5</td><td>shared desktop Chrome</td><td>Cassie sniffs Roku/Android and rejects them</td></tr>
+<tr><td>STV</td><td>shared desktop Chrome</td><td>STV doesn't sniff</td></tr>
+<tr><td>Blaze</td><td>shared desktop Chrome + <code>platform=chrome</code> query param</td><td>Blaze explicitly checks the platform= param</td></tr>
+<tr><td>Sky News</td><td>shared desktop Chrome</td><td>BrightcovePlayback doesn't sniff</td></tr>
+</tbody>
+</table>
+
+<h2>Genre coverage</h2>
+<table>
+<thead><tr><th>Genre</th><th>BBC</th><th>ITVX</th><th>C4</th><th>My5</th><th>STV</th><th>Blaze</th></tr></thead>
+<tbody>
+<tr><td>Films</td><td>✓</td><td>✓</td><td>✓</td><td>✓</td><td>✓</td><td>—</td></tr>
+<tr><td>Drama & Soaps</td><td>✓</td><td>✓</td><td>✓</td><td>✓</td><td>✓</td><td>✓</td></tr>
+<tr><td>Comedy</td><td>✓</td><td>✓</td><td>✓</td><td>—</td><td>✗ (only comedy-drama sub)</td><td>—</td></tr>
+<tr><td>Documentaries</td><td>✓</td><td>✓</td><td>✓</td><td>✓</td><td>✓</td><td>✓</td></tr>
+<tr><td>Sport</td><td>✓</td><td>✓</td><td>—</td><td>✓</td><td>—</td><td>—</td></tr>
+<tr><td>News</td><td>✓</td><td>✓</td><td>—</td><td>—</td><td>✓</td><td>—</td></tr>
+<tr><td>Entertainment</td><td>✓</td><td>✓</td><td>✓</td><td>✓</td><td>✓</td><td>✓</td></tr>
+<tr><td>Kids</td><td>—</td><td>✓</td><td>✓</td><td>✓ (milkshake!)</td><td>—</td><td>—</td></tr>
+<tr><td>Music</td><td>✓</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+<tr><td>Food</td><td>✓</td><td>—</td><td>—</td><td>—</td><td>✓</td><td>—</td></tr>
+<tr><td>Lifestyle</td><td>✓</td><td>—</td><td>—</td><td>—</td><td>✓</td><td>—</td></tr>
+<tr><td>History</td><td>✓</td><td>—</td><td>—</td><td>—</td><td>✓ (history-hit)</td><td>✓</td></tr>
+<tr><td>Science & Nature</td><td>✓</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+<tr><td>Arts</td><td>✓</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+<tr><td>Signed / BSL</td><td>✓</td><td>✓</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+<tr><td>True Crime</td><td>—</td><td>—</td><td>—</td><td>—</td><td>✓</td><td>✓</td></tr>
+<tr><td>Scottish</td><td>—</td><td>—</td><td>—</td><td>—</td><td>✓</td><td>—</td></tr>
+</tbody>
+</table>
+
+<aside class="callout info">
+<span class="callout-title">Reading the gaps</span>
+<p>An empty <em>✓</em> doesn't necessarily mean the provider exposes no
+content for that genre — it means the addon doesn't currently route that
+provider into the unified genre. Most gaps are deliberate: Blaze doesn't
+publish a catalogue API for filtering, so its unified-genre presence is
+just "all shows under every relevant unified genre"; Sky News is a single
+channel so the genre matrix doesn't apply.</p>
+</aside>
+
+<h2>Live channel matrix</h2>
+<p>The 30 live channels the addon exposes (from
+<a href="../files/default-py.html">default.py:BBC_LIVE_CHANNELS / CUTV_UK_CHANNELS / ITVX_LIVE_CHANNELS</a>):</p>
+<table>
+<thead><tr><th>Provider</th><th>Live channels</th><th>Resolver</th></tr></thead>
+<tbody>
+<tr><td>BBC</td><td>BBC One, BBC Two, BBC Three, BBC Four, CBBC, CBeebies, BBC News, BBC Parliament, Alba, BBC Scotland, S4C</td><td><a href="../files/bbc-py.html"><code>bbc.resolve(channel_id)</code></a></td></tr>
+<tr><td>Sky</td><td>Sky News</td><td><a href="../files/sky-py.html"><code>sky.resolve(listitem)</code></a></td></tr>
+<tr><td>STV</td><td>STV, STV +1</td><td><a href="../files/stv-py.html"><code>stv.resolve(item_id)</code></a></td></tr>
+<tr><td>Channel 4</td><td>Channel 4, E4, More4, Film4, 4seven</td><td><a href="../files/c4-py.html"><code>c4.resolve(item_id)</code></a></td></tr>
+<tr><td>My5</td><td>Channel 5, 5 Star, 5 USA, 5 Action, 5 Select</td><td><a href="../files/my5-py.html"><code>my5.resolve(item_id)</code></a></td></tr>
+<tr><td>Blaze</td><td>Blaze</td><td><a href="../files/blaze-py.html"><code>blaze.resolve(item_id)</code></a></td></tr>
+<tr><td>ITVX</td><td>ITV1, ITV2, ITV3, ITV4, ITVBe</td><td><a href="../files/itvx-py.html"><code>itvx.resolve(channel)</code></a></td></tr>
+</tbody>
+</table>
+
+<footer class="site">
+<span>← Previous: <a href="db-schema.html">Kodi DB schema</a></span>
+<span>Next: <a href="path-migration.html">Path & migration log</a> →</span>
+</footer>
+</main>
+</div>
+</body>
+</html>

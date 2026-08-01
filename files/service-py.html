@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>service.py — EasyPlayTV docs</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="../assets/style.css">
+<script src="../assets/nav.js" defer></script>
+</head>
+<body data-page="service-py">
+<a class="skip-link" href="#main">Skip to content</a>
+<div class="layout">
+<nav class="sidebar"></nav>
+<main id="main">
+<div class="crumbs"><a href="../index.html">Home</a> <span class="sep">/</span> Files <span class="sep">/</span> service.py</div>
+<h1>service.py <small>— scheduled sync daemon</small></h1>
+
+<div class="file-meta">
+<span><strong>Path</strong> <code>/service.py</code></span>
+<span><strong>Lines</strong> 129</span>
+<span><strong>Type</strong> xbmc.service (long-lived)</span>
+<span><strong>Single instance?</strong> yes — Kodi starts one per profile, lives until Kodi exits</span>
+<span><strong>← invoked by</strong> Kodi at startup</span>
+</div>
+
+<h2>Role</h2>
+<p>Long-running <code>xbmc.Monitor</code> daemon. On startup runs the .strm →
+plugin:// migration, then schedules one sync per provider at a staggered
+6-hour cadence and polls a folder of "force-sync" marker files every 30 s so
+manual triggers can fire out of schedule.</p>
+
+<h2>Module-level configuration</h2>
+
+<div class="fn">
+<span class="fn-sig">PROVIDER_SCHEDULE = [("bbc",0), ("itvx",30), ("c4",60), ("my5",90), ("stv",120), ("blaze",150)]</span>
+<p>One (provider, minute-offset) tuple per provider. The offset is the
+<em>minute of the day</em> at which the first sync should fire, so they're
+spread across the first 2.5 h of the day and then every 6 h after. So BBC
+fires at 00:00, 06:00, 12:00, 18:00; ITVX at 00:30, 06:30, …; C4 at 01:00,
+07:00, …; etc.</p>
+</div>
+
+<div class="fn">
+<span class="fn-sig">SYNC_INTERVAL_SECS = 6 * 3600 · line 18</span>
+<p>Stagger window. 6 h chosen because that's the longest we can go without
+missing the time-window for newly-published episodes (especially BBC, which
+publishes ~30 min after broadcast) while keeping TMDb rate-limit usage
+modest. Each provider's TMDb lookup is independent so they don't compound.</p>
+</div>
+
+<h2>EPTVMonitor class</h2>
+
+<div class="fn">
+<span class="fn-sig">__init__() · lines 22–45</span>
+<p>Reads <code>db_source</code> addon setting (via
+<code>resources.lib.is_master()</code>) — in <em>follower mode</em> the
+daemon logs and returns without scheduling syncs (libraries are written by
+the master box only; followers just read the shared MariaDB). In
+<em>master mode</em> it runs
+<a href="library_sync-py.html"><code>library_sync.migrate_to_plugin_paths()</code></a>
+once (idempotent — does nothing if the migration's already been done), then
+initialises <code>self._next_sync[provider]</code> for every provider to
+the next future slot in the day.</p>
+<div class="callout warn"><span class="callout-title">BBC respect TV-license setting</span>
+<p>If <code>has_tv_license</code> is false, BBC is <em>not</em> added to
+<code>self._next_sync</code>; the loop at line 110 then skips it. This is
+the same gate used in <a href="default-py.html"><code>default.py</code></a>
+when the user clicks a BBC live channel.</p>
+</div>
+</div>
+
+<div class="fn">
+<span class="fn-sig">_run_provider_sync(provider, force=False) · lines 47–65</span>
+<p>Worker function run inside a daemon thread. Imports
+<a href="library_sync-py.html"><code>library_sync</code></a> (also late-imported
+since startup order can race Kodi's addon loader), calls
+<code>library_sync.sync_provider(provider, force=force)</code>, logs the
+result, and unconditionally removes itself from
+<code>self._sync_threads</code> in <code>finally</code> so the next slot can
+be scheduled.</p>
+</div>
+
+<div class="fn">
+<span class="fn-sig">_check_force_markers() · lines 67–99</span>
+<p>Polls the addon profile directory for marker files named
+<code>force_sync_<provider></code> (e.g.
+<code>force_sync_c4</code>). If found, the file is deleted and a
+<em>force</em> sync is fired immediately in a new daemon thread — bypassing
+the scheduled slot. The implementation deliberately does nothing if a sync
+for that provider is already running: <em>"Force-sync marker for 'c4'
+ignored — sync already running"</em>.</p>
+<div class="callout warn"><span class="callout-title">Why marker files instead of JSON-RPC?</span>
+<p>Kodi 21's <code>Addons.ExecuteAddon</code> no longer invokes a
+<code>python.pluginsource</code> addon with query-string params — it loads
+the addon's default entry-point without forwarding argv. JSON-RPC
+<code>RunPlugin</code> is also unreliable for this. The marker-file approach
+lets external scripts (a Home Assistant automation, a Cron job, a Kodi
+settings UI button via <code>RunScript</code>) trigger syncs by simply
+<code>touch</code>ing a file. The service polls every 30 s so latency is at
+worst half a minute.</p>
+</div>
+</div>
+
+<div class="fn">
+<span class="fn-sig">run() · lines 101–124</span>
+<p>The main loop. Logs the first-sync delay for each provider (so you can
+read in <code>kodi.log</code> when the next slot is), then loops on
+<code>waitForAbort(30)</code> — Kodi's monitor-friendly sleep that returns
+truthy when Kodi is shutting down. Each iteration:</p>
+<ol>
+<li>For every provider in <code>self._next_sync</code>: if we've reached
+its time and no thread is currently running for it, reschedule
+(<code>self._next_sync[p] = now + SYNC_INTERVAL_SECS</code>) and
+spawn a daemon thread.</li>
+<li>Call <code>_check_force_markers()</code>.</li>
+<li>Wait 30 s.</li>
+</ol>
+</div>
+
+<h2>Concurrency model</h2>
+<p>One daemon thread per provider at any time. <code>self._sync_threads</code>
+maps provider name to <code>threading.Thread</code> and is populated when a
+sync starts and cleared when it ends — the scheduler checks membership
+before launching, so two concurrent syncs of the <em>same</em> provider can't
+happen. Syncs of <em>different</em> providers <em>can</em> run concurrently,
+which is why <a href="library_sync-py.html"><code>library_sync._get_db()</code></a>
+uses <code>threading.local()</code> for its DB connections.</p>
+
+<div class="callout danger"><span class="callout-title">Daemon thread + pymysql = corruption if you share a connection</span>
+<p>See <a href="../pages/troubleshooting.html">troubleshooting</a>. The original
+single-connection design corrupted packet streams when two provider syncs
+hit the same socket at once. Never share a <code>pymysql</code> connection
+across the daemon threads spawned here.</p>
+</div>
+
+<h2>Lifecycle log messages you'll see in <code>kodi.log</code></h2>
+<pre><code>EasyPlayTV: Service started — 6 providers at 6h intervals
+EasyPlayTV: 'bbc' first sync in 480 min
+EasyPlayTV: 'itvx' first sync in 510 min
+…
+EasyPlayTV: Scheduled sync starting for 'c4'
+EasyPlayTV: Scheduled sync complete for 'c4'
+EasyPlayTV: Force-sync marker detected for 'my5'
+EasyPlayTV: Service stopped</code></pre>
+
+<footer class="site">
+<span>← Previous: <a href="default-py.html">default.py</a></span>
+<span>Next: <a href="library_sync-py.html">library_sync.py</a> →</span>
+</footer>
+</main>
+</div>
+</body>
+</html>

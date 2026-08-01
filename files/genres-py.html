@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>genres.py — EasyPlayTV docs</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="../assets/style.css">
+<script src="../assets/nav.js" defer></script>
+</head>
+<body data-page="genres-py">
+<a class="skip-link" href="#main">Skip to content</a>
+<div class="layout">
+<nav class="sidebar"></nav>
+<main id="main">
+<div class="crumbs"><a href="../index.html">Home</a> <span class="sep">/</span> Files <span class="sep">/</span> genres.py</div>
+<h1>resources/lib/genres.py <small>— unified genre map</small></h1>
+
+<div class="file-meta">
+<span><strong>Path</strong> <code>/resources/lib/genres.py</code></span>
+<span><strong>Lines</strong> 25</span>
+<span><strong>Type</strong> static lookup tables</span>
+<span><strong>← imported by</strong> default.py, library_sync.py</span>
+</div>
+
+<h2>Role</h2>
+<p>Three pure-data tables that map between the addon's <em>unified</em> genre
+slugs (what the user clicks in the UI) and each provider's per-genre slugs
+(what each provider's API expects). This is the single source of truth that
+prevents every consumer from hard-coding its own
+"films-on-itvx is <code>films</code>, films-on-stv is <code>movies</code>,
+films-on-bbc is <code>films</code>" mapping.</p>
+
+<h2>UNIFIED_GENRES — 17 unified genres</h2>
+
+<div class="fn">
+<span class="fn-sig">UNIFIED_GENRES = [(unified_id, label, [(provider, provider_slug), ...]), ...]</span>
+<p>A list of 17 tuples. Each tuple is <code>(slug, label, providers)</code> —
+<code>slug</code> is what's passed back through
+<a href="default-py.html"><code>default.py</code></a> as
+<code>?mode=vod_shows&genre_id=<slug></code>; <code>label</code> is what
+the user sees in the tile ("Drama & Soaps"); <code>providers</code> is the
+list of (provider-name, that-provider's-own-genre-slug) pairs to query when
+the user drills in.</p>
+
+<table>
+<thead><tr><th>Slug</th><th>Label</th><th>Providers</th></tr></thead>
+<tbody>
+<tr><td><code>films</code></td><td>Films</td><td>BBC, My5, ITVX, C4, STV</td></tr>
+<tr><td><code>drama</code></td><td>Drama & Soaps</td><td>BBC, My5 (×2: Drama+Soap), ITVX, C4, STV (×5: drama/crime/legal/thriller/comedy-drama), Blaze</td></tr>
+<tr><td><code>comedy</code></td><td>Comedy</td><td>BBC, ITVX, C4</td></tr>
+<tr><td><code>documentaries</code></td><td>Documentaries</td><td>BBC, My5, ITVX, C4, STV (×4), Blaze</td></tr>
+<tr><td><code>sport</code></td><td>Sport</td><td>BBC, My5, ITVX</td></tr>
+<tr><td><code>news</code></td><td>News</td><td>BBC, ITVX, STV</td></tr>
+<tr><td><code>entertainment</code></td><td>Entertainment</td><td>BBC, My5, ITVX, C4, STV (×2), Blaze</td></tr>
+<tr><td><code>kids</code></td><td>Kids</td><td>My5 (milkshake!), ITVX (children)</td></tr>
+<tr><td><code>music</code></td><td>Music</td><td>BBC only</td></tr>
+<tr><td><code>food</code></td><td>Food</td><td>BBC, STV</td></tr>
+<tr><td><code>lifestyle</code></td><td>Lifestyle</td><td>BBC, STV</td></tr>
+<tr><td><code>history</code></td><td>History</td><td>BBC, STV, Blaze</td></tr>
+<tr><td><code>science</code></td><td>Science & Nature</td><td>BBC only</td></tr>
+<tr><td><code>arts</code></td><td>Arts</td><td>BBC only</td></tr>
+<tr><td><code>signed</code></td><td>Signed / BSL</td><td>BBC, ITVX</td></tr>
+<tr><td><code>true-crime</code></td><td>True Crime</td><td>STV (×2), Blaze</td></tr>
+<tr><td><code>scottish</code></td><td>Scottish</td><td>STV only</td></tr>
+</tbody>
+</table>
+
+<div class="callout warn"><span class="callout-title">STV has lots of sub-genres</span>
+<p>STV's API exposes finely-sliced genres (<code>crime-drama</code>,
+<code>legal-drama</code>, <code>real-crime</code>,
+<code>real-stories</code>, …). To avoid bloating the UI with 15 nearly
+identical tiles, multiple STV slugs are folded into the same unified genre.
+The fetcher iterates the whole list and dedupes by show GUID.</p>
+</div>
+
+<div class="callout warn"><span class="callout-title">Blaze is empty-string</span>
+<p>Blaze's API doesn't expose genre filters at all — every unified genre
+that nominally includes Blaze just hits <code>blaze_vod.list_shows()</code>
+with no filter. That's why Blaze appears with empty strings in
+<code>drama</code>, <code>documentaries</code>, <code>entertainment</code>,
+<code>history</code>, <code>true-crime</code>.</p>
+</div>
+</div>
+
+<h2>SERIES_GENRES + MOVIE_GENRES</h2>
+
+<div class="fn">
+<span class="fn-sig">SERIES_GENRES · MOVIE_GENRES · lines 21, 23</span>
+<p>Two <code>set</code>s of unified-genre slugs used to decide whether a
+given tile routes to <code>?mode=vod_shows</code> (series) or
+<code>?mode=movies_genre</code> (movies). Currently
+<code>MOVIE_GENRES = {"films"}</code> and <code>SERIES_GENRES</code> is
+everything else — the split is in code rather than in the
+<code>UNIFIED_GENRES</code> tuple so it's a single one-line tweak if a new
+genre gets classified as a movie.</p>
+</div>
+
+<h2>PROVIDER_LABELS</h2>
+
+<div class="fn">
+<span class="fn-sig">PROVIDER_LABELS = {"bbc": "BBC", "my5": "My5", "itvx": "ITVX", "c4": "C4", "stv": "STV", "blaze": "BLAZE"} · line 25</span>
+<p>The short codes shown as the <code>[ITVX]</code>, <code>[My5]</code>
+prefixes on tvshow titles and as the provider tag in listitem info.
+Centralised because the prefix appears in titlesort comparisons in
+<a href="library_sync-py.html"><code>library_sync.fix_sort_titles()</code></a>
+and any mismatch in capitalisation would break the sort.</p>
+</div>
+
+<footer class="site">
+<span>← Previous: <a href="init-py.html">__init__.py</a></span>
+<span>Next: <a href="catalog_check-py.html">catalog_check.py</a> →</span>
+</footer>
+</main>
+</div>
+</body>
+</html>

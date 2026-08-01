@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>catalog_check.py — EasyPlayTV docs</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="../assets/style.css">
+<script src="../assets/nav.js" defer></script>
+</head>
+<body data-page="catalog_check-py">
+<a class="skip-link" href="#main">Skip to content</a>
+<div class="layout">
+<nav class="sidebar"></nav>
+<main id="main">
+<div class="crumbs"><a href="../index.html">Home</a> <span class="sep">/</span> Files <span class="sep">/</span> catalog_check.py</div>
+<h1>resources/lib/catalog_check.py <small>— stale-title tracker</small></h1>
+
+<div class="file-meta">
+<span><strong>Path</strong> <code>/resources/lib/catalog_check.py</code></span>
+<span><strong>Lines</strong> 51</span>
+<span><strong>Type</strong> stateful helper (small)</span>
+<span><strong>← imported by</strong> default.py (during browse listing)</span>
+<span><strong>→ calls</strong> Kodi profile dir IO; one <code>threading.Lock</code></span>
+</div>
+
+<h2>Role</h2>
+<p>Tracks which show titles have been marked "stale" — meaning a recent
+listing fetch returned zero episodes. The UI then greys those rows out
+without forcing a full resync, which avoids hammering the localStorage-y
+state file in <a href="library_sync-py.html"><code>library_sync.py</code></a>.</p>
+
+<p>This is a <em>browsing</em> safety net, not a sync primitive. The sync
+engine itself doesn't consult this module; it just refreshes the Kodi DB
+directly. The stale list is consulted by <code>default.py</code>'s listing
+functions to decide whether to attach a "stale" label to a listitem.</p>
+
+<h2>Storage</h2>
+
+<div class="fn">
+<span class="fn-sig">STALE_FILE = <addon_profile>/stale_titles.json · line 10</span>
+<p>One JSON file on disk containing a single JSON array of strings
+(the stale titles), kept sorted (line 29) so diffs across runs are stable
+in git. Stored in the addon profile dir alongside
+<code>library_sync_state.json</code> and <code>provider_map.json</code>.</p>
+</div>
+
+<div class="fn">
+<span class="fn-sig">_lock · _stale_titles · lines 12, 13</span>
+<p>Module-level <code>threading.Lock</code> protects the in-memory set.
+Module is imported by both the service and the plugin in separate
+interpreter threads, so the in-memory copy may differ between processes —
+but the on-disk copy is the shared truth and is reloaded on every import.</p>
+</div>
+
+<h2>Functions</h2>
+
+<div class="fn">
+<span class="fn-sig">_load_stale() · line 16</span>
+<p>Reads <code>STALE_FILE</code> into the module-level set. Called once at
+import time (line 34) — so importing <code>catalog_check</code> is what
+triggers the load, no explicit init call needed.</p>
+</div>
+
+<div class="fn">
+<span class="fn-sig">_save_stale() · line 26</span>
+<p>Writes <code>sorted(_stale_titles)</code> back to disk. Sorted so git
+diffs don't churn. Silent on failure (best-effort persistence).</p>
+</div>
+
+<div class="fn">
+<span class="fn-sig">mark_stale(title) · line 37</span>
+<p>Adds <code>title</code> to the set under the lock, calls
+<code>_save_stale()</code>, logs at DEBUG level so normal kodi.log noise is
+minimal. Called by <a href="default-py.html"><code>default.py</code></a>
+when an episode-listing fetch comes back empty twice in a row.</p>
+</div>
+
+<div class="fn">
+<span class="fn-sig">is_stale(title) -> bool · line 44</span>
+<p>Membership test under the lock. Used by listing code to attach a
+"stale" label or skip rendering.</p>
+</div>
+
+<div class="fn">
+<span class="fn-sig">get_stale_titles() -> set · line 49</span>
+<p>Returns a copy of the set. Used by the troubleshooting page action to
+show the user what's been marked stale.</p>
+</div>
+
+<div class="callout warn"><span class="callout-title">No expiry / no clear</span>
+<p>There is no automatic expiry of stale entries and no public
+<code>clear()</code> function. Stale titles persist across restarts until
+the on-disk file is deleted. Practically this is fine — a stale title means
+the provider genuinely had no episodes; if the show later acquires a new
+season, the entry stays stale but the listing refreshes anyway via the
+<code>library_sync</code> path, so the UI updates automatically. The stale
+set is a hint, not an authority.</p>
+</div>
+
+<footer class="site">
+<span>← Previous: <a href="genres-py.html">genres.py</a></span>
+<span>Next: <a href="library_sync-py.html">library_sync.py</a> →</span>
+</footer>
+</main>
+</div>
+</body>
+</html>

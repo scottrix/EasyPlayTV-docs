@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>EasyPlayTV docs — Home</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="assets/style.css">
+<script src="assets/nav.js" defer></script>
+</head>
+<body data-page="index">
+<a class="skip-link" href="#main">Skip to content</a>
+<div class="layout">
+<nav class="sidebar"></nav>
+<main id="main">
+<h1>EasyPlayTV — source walkthrough</h1>
+<p>Hand-written documentation for the EasyPlayTV Kodi addon. Each page covers one
+source file (or one subsystem) explaining <em>what it does, why it does it that way,
+and where the sharp edges are</em>. Use the sidebar to navigate, or follow one of
+the routes below.</p>
+
+<h2>Two-sentence summary</h2>
+<p>EasyPlayTV is a Kodi video addon that aggregates free-to-air UK streaming
+catch-up services — BBC iPlayer, ITVX, My5, Channel 4, STV, Blaze — plus a couple
+of live channels (Sky News). It does two jobs:</p>
+<ol>
+<li><strong>Browse</strong> — expose each provider's catalogue through a unified
+UI inside Kodi (live TV grid + VOD catalogue browsable by genre/show/season/episode).</li>
+<li><strong>Populate the Kodi library</strong> — a background service syncs the
+catalogues into Kodi's central MariaDB video database as if they were on-disk
+files, using <code>plugin://</code> URLs as virtual filenames so the rows
+behave like any other Kodi library entry.</li>
+</ol>
+
+<h2>Where to start</h2>
+<table>
+<thead><tr><th>If you want to understand…</th><th>Start at</th></tr></thead>
+<tbody>
+<tr><td>the big picture and the data flow between modules</td><td><a href="pages/architecture.html">Architecture</a></td></tr>
+<tr><td>what Kodi tables the addon writes to and why</td><td><a href="pages/db-schema.html">Kodi DB schema</a></td></tr>
+<tr><td>how the various provider modules compare (endpoints, auth, DRM, pagination)</td><td><a href="pages/provider-matrix.html">Provider matrix</a></td></tr>
+<tr><td>why there are no <code>.strm</code> files any more and what changed</td><td><a href="pages/path-migration.html">Path & migration log</a></td></tr>
+<tr><td>known crashes / failures and their fixes</td><td><a href="pages/troubleshooting.html">Troubleshooting</a></td></tr>
+<tr><td>how a single button-press turns into DASH playback</td><td><a href="files/default-py.html">default.py</a></td></tr>
+<tr><td>how a 6-hour scheduled sync populates the library</td><td><a href="files/service-py.html">service.py</a> → <a href="files/library_sync-py.html">library_sync.py</a></td></tr>
+</tbody>
+</table>
+
+<h2>Project layout</h2>
+<pre><code>EasyPlayTV/
+├── addon.xml                 — Kodi addon manifest
+├── default.py                — plugin entry point (cached per-call routing)
+├── service.py                — long-lived Kodi Monitor daemon (scheduled syncs)
+├── README.md
+└── resources/
+    ├── settings.xml          — addon settings UI (db_source, max_resolution, itvx creds, …)
+    ├── language/en_gb/strings.po
+    └── lib/
+        ├── __init__.py        — shared helpers: provider_map, setup_dash_item, get_ua, …
+        ├── genres.py          — UNIFIED_GENRES + PROVIDER_LABELS lookup
+        ├── library_sync.py    — sync engine (1.7k LOC — heart of the addon)
+        ├── strm.py            — URL builders (_build_*_strm_url) + show fetcher for sync
+        ├── movies_db.py       — Kodi library queries for browsing Movies from the UI
+        ├── series_db.py       — Kodi library queries for browsing Series from the UI
+        ├── catalog_check.py   — small stale-title marker (used by UI to grey-out dead entries)
+        │
+        ├── bbc.py / bbc_vod.py     — BBC iPlayer live + VOD
+        ├── itvx.py / itvx_vod.py   — ITVX live + VOD (OAuth/JWT session)
+        ├── c4.py / c4_vod.py       — Channel 4 live + VOD (AES-CBC token decrypt + Widevine)
+        ├── my5.py / my5_vod.py     — My5 VOD (Cassie HMAC/AES keys extracted from live JS)
+        ├── stv.py / stv_vod.py     — STV live + VOD
+        ├── blaze.py / blaze_vod.py — Blaze TV (HTML scraping)
+        └── sky.py                  — Sky News live (Brightcove)
+</code></pre>
+
+<h2>Conventions used in these docs</h2>
+<ul>
+<li><span class="pill">→ calls</span> — references the next function this code invokes</li>
+<li><span class="pill muted">← called by</span> — references upstream callers</li>
+<li><span class="pill warn">gotcha</span> — a known sharp edge worth flagging when reading</li>
+<li><span class="pill danger">don't</span> — anti-patterns / things that previously broke</li>
+<li><span class="pill ok">fix</span> — points where a specific bug was fixed</li>
+</ul>
+
+<p>Code samples in the docs are illustrative — for the truth, read the source.
+Each per-file page lists the canonical path and line count in a meta box at the
+top so you can keep the source open in another pane while you read.</p>
+
+<h2>Quick numbers (current production tor box)</h2>
+<table>
+<thead><tr><th>What</th><th>Value</th></tr></thead>
+<tbody>
+<tr><td>tvshows in DB (prefixed <code>[PROVIDER] Title</code>)</td><td>6,114</td></tr>
+<tr><td>episodes</td><td>128,768</td></tr>
+<tr><td>per-episode files table rows (all under <code>plugin://plugin.video.easyplaytv/</code>)</td><td>123,797</td></tr>
+<tr><td>movies</td><td>889</td></tr>
+<tr><td>providers</td><td>BBC, ITVX, My5, C4, STV, Blaze (live+VOD), Sky News (live only)</td></tr>
+<tr><td>sync cadence</td><td>staggered every 6 h (BBC 00:00, ITVX 00:30, C4 01:00, My5 01:30, STV 02:00, Blaze 02:30)</td></tr>
+<tr><td>Kodi DB</td><td>MariaDB at 192.168.178.17:3306 / MyVideos131 (kodi/kodi)</td></tr>
+<tr><td>target hardware</td><td>Raspberry Pi 3 (OSMC) + V4L2 mem2mem Widevine</td></tr>
+</tbody>
+</table>
+
+<footer class="site">
+<span>Generated by hand · <a href="pages/troubleshooting.html">last updated from session work</a></span>
+<span>See <a href="pages/path-migration.html">migration log</a> for the .strm → plugin:// cleanup</span>
+</footer>
+</main>
+</div>
+</body>
+</html>

@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Path & migration log — EasyPlayTV docs</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="../assets/style.css">
+<script src="../assets/nav.js" defer></script>
+</head>
+<body data-page="path-migration">
+<a class="skip-link" href="#main">Skip to content</a>
+<div class="layout">
+<nav class="sidebar"></nav>
+<main id="main">
+<div class="crumbs"><a href="../index.html">Home</a> <span class="sep">/</span> Path & migration log</div>
+<h1>Path & migration log</h1>
+
+<p>The addon's storage strategy moved through three distinct phases. This
+page records the rationale, the technical changes, and what the production
+DB looks like today.</p>
+
+<h2>Phase 1 — .strm files on disk (original)</h2>
+<p>Originally the addon wrote one <code>.strm</code> file per episode (and
+per movie) inside <code>addon_data/plugin.video.easyplaytv/Series/</code>
+and <code>addon_data/plugin.video.easyplaytv/Movies/</code>. Each
+<code>.strm</code> file contained a single line:</p>
+<pre><code>plugin://plugin.video.easyplaytv/?action=resolve_vod&provider=itvx&episode_id=…</code></pre>
+<p>Kodi's video library scanner recursively walked these folders using
+the TMDb.tv scraper, picked up the <code>.strm</code> files, and treated
+each as a video file. The scraper created tvshow rows from the parent
+folder name (e.g. <em>Ackley Bridge</em>), episode rows from each
+<code>.strm</code> file's parent season folder, etc.</p>
+
+<p>Two problems with this approach drove the migration:</p>
+<ol>
+<li><strong>Un-prefixed duplicates.</strong> The folder names per show had
+the bare title (e.g. <em>Ackley Bridge</em>) because Kodi's scraper
+matches bare titles to TMDb. The addon's <em>own</em> sync engine
+meanwhile inserted <code>[ITVX] Ackley Bridge</code>-prefixed rows
+directly into the DB (because the provider matters for episode resolution
+and showing the user where the show came from). The TMDb scanner kept
+creating <em>additional</em> un-prefixed rows from the .strm trees on
+every Kodi boot, conflicting with the prefix rows.</li>
+<li><strong>Filesystem churn.</strong> A brand-new show from the sync
+engine meant a new folder + new <code>.strm</code> file on disk; this
+then triggered Kodi's scanner to re-scrape the entire Series tree. On a
+Pi SD-card that was ~10 s of I/O per show. With hundreds of new shows
+per sync, the library browser was unusable for 15+ minutes after every
+sync.</li>
+</ol>
+
+<h2>Phase 2 — plugin:// URL insertion + <code>exclude=1</code> on the path row</h2>
+<p>The current design. The addon:</p>
+<ol>
+<li><strong>Stops writing <code>.strm</code> files entirely.</strong> The
+filesystem is now flat (just one addon profile dir).</li>
+<li><strong>Inserts the <code>plugin://…</code> URL directly into the
+<code>files</code> table</strong> under a single
+<code>plugin://plugin.video.easyplaytv/</code> path row (idPath=485 —
+the same single path row every episode/movie is attached to).</li>
+<li><strong>Sets <code>exclude=1</code> on the plugin source path row</strong>
+via <code>library_sync.ensure_series_path_config</code>. This stops Kodi's
+TMDB scanner from automagically creating duplicate tvshow rows when it
+sees the plugin URL in the path table — see the warning in
+<a href="../files/library_sync-py.html">ensure_series_path_config</a>.</li>
+<li><strong>Inserts the <code>[PROVIDER] Title</code>-prefixed display
+title</strong> directly into <code>tvshow.c00</code> (via
+<a href="../files/library_sync-py.html">library_sync._insert_tvshow</a>)
+and <code>movie.c00</code> (via <code>_insert_movie</code>), bypassing
+the scraper entirely.</li>
+</ol>
+
+<h2>The migration itself — <code>migrate_to_plugin_paths()</code></h2>
+<p>Called once from
+<a href="../files/service-py.html">service.py</a> on startup (master
+mode only). Idempotent — does nothing once migration is complete.</p>
+
+<p>Steps (full detail in
+<a href="../files/library_sync-py.html">library_sync.migrate_to_plugin_paths</a>):</p>
+<ol>
+<li><strong><code>_repair_scraper_path_settings(db)</code></strong> — re-quotes
+unquoted XML attributes in legacy <code>path.strSettings</code> rows and
+forces <code>verboselog=false</code>. (Earlier versions of the addon had
+propagated an unquoted XML with verboselog=true into EasyPlayTV path
+rows — caused ~22s per TMDb season API call's log pformat on RPi SD I/O,
+~13 min for WWE Raw alone — that was the original motivation for
+<code>_sanitize_scraper_settings_xml</code>.)</li>
+<li><strong>Insert the single <code>PLUGIN_SOURCE_PATH</code> path row</strong>
+if it doesn't already exist (with <code>exclude=0</code> at this stage;
+<code>ensure_series_path_config</code> later flips it to 1).</li>
+<li><strong>For every <code>episode</code> row joined to a legacy disk
+path matching <code>%easyplaytv%…/Series/%…/.strm</code></strong>:
+read the <code>.strm</code> file to get the saved <code>plugin://…</code>
+URL (or scan sibling files if the exact file isn't there but a
+S<em>N</em>E<em>N</em>-pattern sibling is), parse out the query-string,
+write a NEW <code>files</code> row under <code>PLUGIN_SOURCE_PATH</code>
+with the query-string as <code>strFilename</code>, UPDATE
+<code>episode.idFile</code> and <code>episode.c18</code> to point at the
+new file row, DELETE the old file row. Logged as
+<em>"Migrating N episode path entries"</em> at line 1656.</li>
+<li><strong>Same for movies</strong> — also re-inserts the
+<code>videoversion</code> row Kodi 21 expects (line 1743-1747 — Kodi 21
+won't show a movie in the UI without a videoversion row).</li>
+<li><strong>For every distinct <code>tvshowlinkpath</code> on a legacy
+disk Series path:</strong> record the <code>idShow</code>s, DELETE all
+the old <code>tvshowlinkpath</code> rows, <strong>UPDATE path SET exclude=1</strong>
+on every orphan disk-folder path (line 1773-1777) to stop Kodi's scanner
+from re-attaching to them on boot. Re-link every show to
+<code>PLUGIN_SOURCE_PATH</code> via <code>INSERT IGNORE INTO tvshowlinkpath</code>.</li>
+</ol>
+
+<h2>What got deleted from disk and DB during the production run</h2>
+<table>
+<thead><tr><th>What</th><th>Count</th><th>Where</th></tr></thead>
+<tbody>
+<tr><td><code>.strm</code> files deleted from disk</td><td>~1,400</td><td><code>addon_data/plugin.video.easyplaytv/Series/</code> + <code>/Movies/</code></td></tr>
+<tr><td>Orphan <code>path</code> rows deleted from DB</td><td>~12,618</td><td><code>MyVideos131.path</code>, the fetchers' per-show folder paths</td></tr>
+<tr><td>TV shows re-linked to <code>PLUGIN_SOURCE_PATH</code></td><td>16</td><td>orphan un-prefixed shows that predated the prefix convention</td></tr>
+<tr><td>Disk paths flipped to <code>exclude=1</code></td><td>~88</td><td>per-season disk-folder path rows in <code>path</code></td></tr>
+<tr><td><code>sources.xml</code> entries removed</td><td>2</td><td>the EasyPlayTV Series + Movies source rows Kodi tracked</td></tr>
+<tr><td>State files deleted from disk</td><td>1</td><td><code>strm_state.json</code></td></tr>
+<tr><td>Total service-run migration time</td><td>~6 min</td><td>RPi 3 SD-card</td></tr>
+</tbody>
+</table>
+
+<div class="callout warn"><span class="callout-title">Restart Kodi after first run</span>
+<p>The addon can run the migration while Kodi is live, but Kodi's video
+window caches the old path/shows in memory for the lifetime of the
+current session. After the first migration completes, the user should
+restart Kodi so the in-memory cache is dropped and the new
+<code>PLUGIN_SOURCE_PATH</code>-attached rows are what Kodi sees. The
+<code>UpdateLibrary(video, ...)</code> builtin that
+<a href="../files/library_sync-py.html">sync_provider</a> fires does
+most of the refresh but isn't a full memory clear.</p>
+</div>
+
+<h2>Current production state (sanity-check numbers)</h2>
+<table>
+<thead><tr><th>Metric</th><th>Value</th></tr></thead>
+<tbody>
+<tr><td>tvshows in DB</td><td>6,114</td></tr>
+<tr><td>episodes</td><td>128,768</td></tr>
+<tr><td>per-episode files rows under idPath=485</td><td>123,797</td></tr>
+<tr><td>movies</td><td>889</td></tr>
+<tr><td><code>.strm</code> files on disk remaining</td><td>0</td></tr>
+<tr><td>Orphan disk-folder path rows still on <code>exclude=0</code></td><td>0 (should be — re-check after Kodi upgrade)</td></tr>
+</tbody>
+</table>
+
+<h2>Known dead code from the migration (clean-up opportunities)</h2>
+<ul>
+<li><a href="../files/strm-py.html">strm.py:STRM_MOVIES_DIR / STRM_SERIES_DIR / STATE_FILE</a> — defined but unused.</li>
+<li><a href="../files/library_sync-py.html">library_sync.py:MOVIE_PATH / SERIES_PATH</a> plus the redundant
+<code>STRM_MOVIES_DIR / STRM_SERIES_DIR</code> constants — still used by query
+substrings in <code>prefix_existing_*</code> functions; deleting would
+require updating those LIKE clauses to a regex on the existing
+PLUGIN_SOURCE_PATH-only path-row idPath.</li>
+<li><a href="../files/movies_db-py.html">movies_db._load_strm_providers()</a>
+and its <code>_strm_provider_cache</code> / <code>_strm_epid_cache</code> —
+walks an empty directory, returns <code>{}</code>. Still called by
+<code>get_provider_for_title</code> and <code>get_movies</code>'s
+plugin-filename fallback (the latter can be removed — the plugin URL is
+in <code>movie.c22</code> now).</li>
+<li><a href="../files/movies_db-py.html">movies_db._provider_from_strm</a>
+— reads a non-existent file; returns "". Safe to remove.</li>
+<li><a href="../files/library_sync-py.html">library_sync._insert_episode</a>'s
+<code>open(strm_path)</code> at lines 1119-1126 — kept for back-compat
+with the hypothetical case a <code>.strm</code> path is ever passed in;
+in practice the sync passes <em>empty</em> and uses the c18 fallback.
+Safe to remove.</li>
+</ul>
+
+<footer class="site">
+<span>← Previous: <a href="provider-matrix.html">Provider matrix</a></span>
+<span>Next: <a href="troubleshooting.html">Troubleshooting</a> →</span>
+</footer>
+</main>
+</div>
+</body>
+</html>
