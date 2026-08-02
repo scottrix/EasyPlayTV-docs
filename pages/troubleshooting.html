@@ -217,7 +217,7 @@ per /tv/<id>/season/N API call (pformat of the entire JSON response),
 costing ~22 s per season on RPi SD-card I/O — e.g. ~13 min for
 WWE Raw alone (35 seasons).</p>
 <p><strong>Fix:</strong>
-<a href="../files/library-sync-py.html">library_sync._sanitize_scraper_settings_xml</a>
+<a href="../files/library_sync-py.html">library_sync._sanitize_scraper_settings_xml</a>
 quotes unquoted attributes and pins verboselog=false; called from
 <code>_repair_scraper_path_settings</code> (run once on every
 <code>migrate_to_plugin_paths</code>). If you see verbose log spam after

@@ -62,7 +62,7 @@ license URL we set, and starts playback.</p>
 
 <div class="callout info">
 <span class="callout-title">Kodi's own library view doesn't call the addon at all</span>
-<p>Once <a href="library_sync-py.html"><code>library_sync</code></a> has
+<p>Once <a href="../files/library_sync-py.html"><code>library_sync</code></a> has
 populated the Kodi MariaDB video database, Kodi's built-in
 <em>Movies</em> / <em>TV Shows</em> home-screen items read those rows
 directly via the standard Kodi library windows — no plugin invocation, no
@@ -84,7 +84,7 @@ Same rows, different UX. Why offer it at all:</p>
 <li><strong>Unified genre taxonomy.</strong> Kodi's own genre view shows
 whatever genres the scraper assigned per row — a BBC film is "Film" while
 an ITVX film is "Films",splintered across multiple "Films" tiles in the
-skin. The addon's <a href="genres-py.html">UNIFIED_GENRES</a> collapses
+skin. The addon's <a href="../files/genres-py.html">UNIFIED_GENRES</a> collapses
 all six providers' genre labels into one "Films" tile, one "Drama", etc.</li>
 <li><strong>Scope to EasyPlayTV content only.</strong> The addon's UI
 shows only rows that hang off <code>plugin://plugin.video.easyplaytv/</code>.
