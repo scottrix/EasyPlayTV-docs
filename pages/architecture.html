@@ -59,13 +59,49 @@ the <code>inputstream.adaptive</code> properties on the listitem for MPEG-DASH +
 license URL we set, and starts playback.</p>
 
 <h3>2. User opens Movies → Genre → Family</h3>
-<p>This is a <em>browse</em> call, not a <em>play</em> call. Kodi calls
-<code>default.py</code> with <code>?mode=movies_genre&genre=films</code> →
-<code>list_movies(genre, page=1)</code>. That function reads from Kodi's
-already-populated video DB via <a href="../files/movies_db-py.html"><code>movies_db.get_movies(genre, ...)</code></a>,
-which returns plain Kodi library rows, not from the live provider catalogue.
-This is what makes browsing fast (no live HTTP fetches per click) — every
-provider's shows have been pre-synced by the background service.</p>
+
+<div class="callout info">
+<span class="callout-title">Kodi's own library view doesn't call the addon at all</span>
+<p>Once <a href="library_sync-py.html"><code>library_sync</code></a> has
+populated the Kodi MariaDB video database, Kodi's built-in
+<em>Movies</em> / <em>TV Shows</em> home-screen items read those rows
+directly via the standard Kodi library windows — no plugin invocation, no
+<code>default.py</code> call, no live HTTP. This is the whole point of
+writing into the DB rather than surfacing content only via plugin
+directory listings: the user can browse exactly as if the shows were
+local files. The addon doesn't participate.</p>
+</div>
+
+<p>The addon <em>does</em> also expose its own browse UI through plugin://
+URLs — but that's an <em>alternative</em> path, not a requirement.
+When the user opens the addon from Kodi's Add-ons menu and walks
+Movies → Genre → Family, Kodi calls <code>default.py</code> with
+<code>?mode=movies_genre&genre=films</code> →
+<code>list_movies(genre, page=1)</code>, which reads the same populated
+DB via <a href="../files/movies_db-py.html"><code>movies_db.get_movies(genre, …)</code></a>.
+Same rows, different UX. Why offer it at all:</p>
+<ul>
+<li><strong>Unified genre taxonomy.</strong> Kodi's own genre view shows
+whatever genres the scraper assigned per row — a BBC film is "Film" while
+an ITVX film is "Films",splintered across multiple "Films" tiles in the
+skin. The addon's <a href="genres-py.html">UNIFIED_GENRES</a> collapses
+all six providers' genre labels into one "Films" tile, one "Drama", etc.</li>
+<li><strong>Scope to EasyPlayTV content only.</strong> The addon's UI
+shows only rows that hang off <code>plugin://plugin.video.easyplaytv/</code>.
+The home-screen Movies view shows everything in the user's library (NAS,
+DVDRips, other addons) — useful for some users, noisy for others.</li>
+<li><strong>Per-provider filtering.</strong> The addon's UI exposes
+"Browse ITVX only" tiles that filter by the <code>[ITVX]</code> prefix
+on the title; Kodi's own library view doesn't know about that prefix
+convention.</li>
+<li><strong>Prefix-aware A–Z sort.</strong> The addon's UI sorts by
+REGEXP-stripping the <code>[PROVIDER]</code> prefix so "Ackley Bridge"
+sorts under A regardless of provider; Kodi's own sort would intermix
+providers under the bracket character.</li>
+</ul>
+<p>Both paths are zero-HTTP — they read from the same already-populated
+Kodi DB. That's what makes browsing fast (the background service has
+already done the live fetches during the 6-hour sync cycle).</p>
 
 <h3>3. Service fires scheduled sync at 01:00 for C4</h3>
 <p><a href="../files/service-py.html"><code>service.py</code></a> polls every
