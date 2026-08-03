@@ -40,15 +40,13 @@ refreshes without re-scraping.</p>
 <p>Three path flavours:</p>
 <ul>
 <li><code>STRM_DIR</code> — addon's writable profile dir, used for state files.</li>
-<li><code>MOVIE_PATH</code> / <code>SERIES_PATH</code> — legacy on-disk
-<code>.strm</code> tree paths. <strong>Dead</strong> now (see
-<a href="../pages/path-migration.html">migration log</a>) but still kept as
-constants because <a href="movies_db-py.html"><code>movies_db._load_strm_providers()</code></a>
-walks them and because <code>prefix_existing_*</code> / migration queries
-filter on the literal string <code>easyplaytv…/Series|Movies</code>
-substrings.</li>
+<li><code>MOVIE_PATH</code> / <code>SERIES_PATH</code> — on-disk folder
+strings the addon uses to filter its own rows in stale-cleanup queries
+(literal <code>easyplaytv…/Series|Movies</code> substring match). The
+folders themselves are not actively used for storage — all episode / movie
+files live under <code>PLUGIN_SOURCE_PATH</code>.</li>
 <li><code>PLUGIN_SOURCE_PATH</code> — the <em>single</em> path row every
-new episode/movie file gets attached to. <code>exclude=1</code> on this row
+episode / movie file gets attached to. <code>exclude=1</code> on this row
 prevents Kodi's TMDB scanner from creating duplicate un-prefixed tvshow
 rows (see <code>ensure_series_path_config</code> below).</li>
 </ul>
@@ -187,8 +185,8 @@ rows collapse to the same key — this is the de-duplication safety net.</li>
 (unless <code>force=True</code>).</li>
 <li style="margin-left:2em">b. TMDb search → TMDb TV fetch for canonical metadata.</li>
 <li style="margin-left:2em">c. <strong>Fetch episodes BEFORE inserting the tvshow row.</strong>
-This was a deliberate fix: inserting first and then skipping on
-<code>if not episodes: continue</code> previously leaked empty tvshow rows
+This avoids a class of bug where inserting first then skipping on
+<code>if not episodes: continue</code> would leak empty tvshow rows
 into the DB (films mis-badged as series, withdrawn brands, API fetch errors).
 Fetchers all key off the show's own fields (f_name/pid/slug) so they don't
 need <code>show_id</code>.</li>
@@ -198,13 +196,13 @@ need <code>show_id</code>.</li>
 (lines 858–888). Some providers (notably STV) return episodes with
 <code>episode_number=0</code> when <code>playerSeries</code> is null. The
 insert loop drops <code>episode_number=0</code> via
-<code>if en_int < 1: continue</code>, which previously dropped <em>hundreds</em>
-of single-episode documentaries and entire programmes without per-episode
-index info (Coronation Street, Emmerdale daily strips). The pre-pass
-renumbers them sequentially from 1 within their season block, preserving
-explicit numbering for the episodes that do have a number. If season is
-also 0/missing, it's bumped to 1 so the show appears as Season 1 rather
-than the Kodi specials block (S00).</li>
+<code>if en_int < 1: continue</code>, which would otherwise drop single-episode
+documentaries and entire programmes without per-episode index info (Coronation
+Street, Emmerdale daily strips). The renumber pre-pass re-numbers them
+sequentially from 1 within their season block, preserving explicit numbering
+for the episodes that do have a number. If season is also 0/missing, it's
+bumped to 1 so the show appears as Season 1 rather than the Kodi specials
+block (S00).</li>
 <li style="margin-left:2em">f. <code>_insert_tvshow(db, safe_title, tv_data, provider=…)</code>.</li>
 <li style="margin-left:2em">g. For each episode: build
 <code>strm_url</code>, parse <code>sn_int</code>/<code>en_int</code>
@@ -284,9 +282,15 @@ up empty forever because every episode rows' <code>idShow</code> points at
 the new row.</p>
 
 <div class="callout warn"><span class="callout-title">TV show lookup must prefer <code>prefixed_dirname</code> first</span>
-<p>Falling back to <code>prefixed_name</code> is fine for the legacy rows
-created before this fix. But the primary lookup must be the show_dir-based
-name so we don't fragment shows every time TMDb search re-ranks.</p>
+<p>The primary lookup must be the show_dir-based name
+(<code>prefixed_dirname</code>) before the TMDb canonical name
+(<code>prefixed_name</code>). TMDb search re-ranks titles dynamically —
+when "Buried" is searched one day it can resolve to "Buried Hearts" and
+the next day to "Buried" (different shows). If we keyed off
+<code>prefixed_name</code> we would fragment a show's episodes across
+two <code>tvshow</code> rows over successive syncs. Keying off
+<code>prefixed_dirname</code> keeps the local show identity stable
+across re-ranks.</p>
 </div>
 
 <p>Besides the lookup order, this function also:</p>
@@ -310,23 +314,20 @@ be fetched by Kodi, even though our own sync inserts episodes directly
 <p>Inserts a single episode. Idempotency check at line 1114 by
 <code>(idShow, c12=season, c13=episode)</code> triple. Builds
 <code>ep_c00</code> as <code>"Show Name - Episode Title"</code> when
-different, just like Kodi's own scraper does. Reads the <code>.strm</code>
-file at <code>strm_path</code> if present (legacy path — sync now passes
-an empty <code>strm_path</code> and a real <code>plugin://…</code> URL as
-the <code>strm_path</code> argument's reader fallback). Inserts into
+different, just like Kodi's own scraper does. Inserts into
 <code>files</code> (with the <em>plugin URL's query string</em> as
 <code>strFilename</code>), <code>episode</code>,
 <code>uniqueid</code> (tmdb episode id), <code>art</code> (still thumbnail).</p>
 
 <div class="callout warn"><span class="callout-title">strFilename is the query-string only</span>
-<p>For migrated rows the <code>files.strFilename</code> is set to
+<p>For every row the <code>files.strFilename</code> is set to
 <code>"?" + parsed.query</code> from the plugin URL — so the Kodi library
-sees <code>?action=resolve_vod&provider=…&episode_id=…</code>, not the
-full <code>plugin://plugin.video.easyplaytv/?…</code>. The full URL lives
-in <code>episode.c18</code> (the path Kodi uses for playback) and in
-<code>movie.c22</code> for movies. The mismatch is deliberate — Kodi uses
-<code>files.strFilename</code> for matching and display, but <code>c18</code>
-for play.</p>
+window displays <code>?action=resolve_vod&provider=…&episode_id=…</code>,
+not the full <code>plugin://plugin.video.easyplaytv/?…</code>. The full
+URL lives in <code>episode.c18</code> (the column Kodi uses for playback)
+and in <code>movie.c22</code> for movies. The mismatch is deliberate:
+Kodi uses <code>files.strFilename</code> for matching and display in the
+library window, but <code>c18</code> / <code>c22</code> for play.</p>
 </div>
 </div>
 
@@ -380,15 +381,16 @@ the TMDb data and UPDATEs the missing columns. Logs every 50 rows so
 progress is visible in <code>kodi.log</code>.</p>
 </div>
 
-<h2>One-off migrations (still kept callable)</h2>
+<h2>One-off maintenance helpers (still kept callable)</h2>
 
 <div class="fn">
 <span class="fn-sig">prefix_existing_movies() · line 1403 · prefix_existing_tvshows() · line 1449</span>
 <p>Run via <code>?action=prefix_titles</code> in
 <a href="default-py.html">default.py</a>. Retrofits the
-<code>[PROVIDER] Title</code> prefix onto old rows that pre-date the
-convention. <code>prefix_existing_tvshows</code> has a 3-tier matching
-strategy against <code>provider_map</code>:</p>
+<code>[PROVIDER] Title</code> prefix onto rows that pre-date the
+convention (e.g. rows inserted before the provider label was being
+written into <code>c00</code>). <code>prefix_existing_tvshows</code> has
+a 3-tier matching strategy against <code>provider_map</code>:</p>
 <ol>
 <li>Exact <code>provider_map.get(title)</code> then
 <code>provider_map.get(safe_filename(title))</code>.</li>
@@ -417,20 +419,22 @@ Branches:</p>
 <ul>
 <li>If <code>provider</code> is given (the normal case from service.py):
 call <code>sync_series_direct(force=force, provider_filter=provider)</code>.</li>
-<li>If <code>provider</code> is empty (legacy "sync everything" path):
+<li>If <code>provider</code> is empty (the unsynced "sync everything" path,
+not normally used by <a href="service-py.html">service.py</a> which always
+passes one provider):
 <code>remove_stale_movies()</code>, <code>remove_stale_series()</code>,
 <code>sync_movies_direct()</code>, <code>sync_series_direct(force=force)</code>.</li>
 <li>Always: <code>prefix_existing_tvshows()</code>, <code>fix_sort_titles()</code>,
 then <code>xbmc.executebuiltin('UpdateLibrary(video, "/home/osmc/.kodi/userdata/addon_data/plugin.video.easyplaytv/")')</code>.</li>
 <li>The <code>UpdateLibrary</code> call is targeted on the EasyPlayTV
-root so Kodi re-scans only EasyPlayTV STRM trees (or the plugin URL),
-not the entire library — avoids reviving TMDb scraper runs across
-unrelated sources on every 6h sync.</li>
+profile root so Kodi re-scans only our plugin-source path (and any
+un-excluded disk folders), not the entire library — avoids reviving
+TMDb scraper runs across unrelated sources on every 6h sync.</li>
 <li>Pops a Kodi notification: <em>"Sync done: +N movies, +N series."</em></li>
 </ul>
 </div>
 
-<h2>The .strm → plugin:// migration</h2>
+<h2>Startup path reconciliation</h2>
 
 <div class="fn">
 <span class="fn-sig">_repair_scraper_path_settings(db=None) · line 1596</span>
@@ -441,11 +445,17 @@ at the SQL level. Idempotent.</p>
 
 <div class="fn">
 <span class="fn-sig">migrate_to_plugin_paths() · line 1625</span>
-<p>The big-bang migration. Called by <a href="service-py.html">service.py</a>
-on startup (master mode only) — idempotent, does nothing once migration is
-complete (the path row already exists; the queries at lines 1646/1701/1750
-return zero rows).</p>
-<p>Steps:</p>
+<p>Called by <a href="service-py.html">service.py</a> on every startup
+(master mode only). Idempotent — on a fully-migrated DB every SELECT
+inside returns zero rows and it exits cleanly.</p>
+<p>Why it's still called on every startup (not just once): the addon can be
+re-installed, the DB can be restored from a snapshot, or a stale Kodi
+scanner run can sneak disk-folder rows back in. Running this on every
+startup guarantees the invariant — emerald-clean DB, all episodes and
+movies attached to <code>PLUGIN_SOURCE_PATH</code>, exclude=1 on every
+disk-folder path row — is re-established within a few seconds of boot no
+matter what state the DB is in.</p>
+<p>Steps (each is a no-op if the DB is already in the target state):</p>
 <ol>
 <li>Run <code>_repair_scraper_path_settings</code>.</li>
 <li>Insert the <code>PLUGIN_SOURCE_PATH</code> path row if missing
@@ -458,48 +468,28 @@ regex match), parse out the <code>plugin://…?…</code> URL, write a new
 <code>files</code> row under <code>PLUGIN_SOURCE_PATH</code> with the
 query-string as <code>strFilename</code>, UPDATE
 <code>episode.idFile</code> and <code>episode.c18</code>, delete the old
-file_id. Logs "Migrating N episode path entries".</li>
+file_id.</li>
 <li>Same for movies — also rewrites <code>movie.idFile</code> and re-inserts
 the <code>videoversion</code> row that Kodi 21 expects.</li>
 <li>For every distinct <code>tvshowlinkpath</code> on a disk path, record
 the <code>idShow</code>s, DELETE all the old <code>tvshowlinkpath</code>
 rows, then <strong>UPDATE path SET exclude=1 WHERE strPath LIKE
 …/Series/%</strong> (lines 1773-1777) to keep Kodi's scanner off the
-orphan per-season disk-folder rows. Without this, the migration's
-deletion is wasted — Kodi just re-creates the links each startup,
-contributing to row churn on every <code>service.py</code> run.</li>
+per-season disk-folder rows. Without this, the disk folders would be
+re-attached to the scanner on every Kodi boot, undoing the direct-write
+design.</li>
 <li>Re-link every show to <code>PLUGIN_SOURCE_PATH</code> via
 <code>INSERT IGNORE INTO tvshowlinkpath</code>.</li>
 </ol>
 
-<div class="callout ok"><span class="callout-title">Idempotent</span>
-<p>Safe to call on every service startup. All queries use
-<code>INSERT IGNORE</code> / <code>SELECT idFile WHERE idPath = %s AND strFilename = %s</code>
-to avoid duplicate inserts. The "Migrating 0 episode path entries" /
-"Migrating 0 movie path entries" log lines you'll see post-migration are
-expected.</p>
-</div>
-
-<div class="callout warn"><span class="callout-title">Migration numbers from the production run</span>
-<p>~1,400 <code>.strm</code> files deleted from disk; ~12,618 orphan
-<code>path</code> rows deleted from the DB; <code>sources.xml</code>
-cleaned of EasyPlayTV Series/Movies entries; 16 orphan prefixed tvshow
-rows re-linked to <code>PLUGIN_SOURCE_PATH</code>. Total runtime on the
-Pi: ~6 min — restarting Kodi after the first run is recommended.</p>
+<div class="callout warn"><span class="callout-title">Idempotent by design</span>
+<p>Safe to call on every service startup. Every UPDATE / INSERT is
+guarded by a SELECT or uses <code>INSERT IGNORE</code>, so a clean DB
+takes the no-op path through the function; the "Migrating 0 episode path
+entries" / "Migrating 0 movie path entries" log lines are expected and
+indicate the invariant is held.</p>
 </div>
 </div>
-
-<h2>Dead code (still importable, never called)</h2>
-<ul>
-<li><code>STRM_MOVIES_DIR</code> / <code>STRM_SERIES_DIR</code> — defined
-at lines 16, 1262 but only read by <code>prefix_existing_*</code> via
-their LIKE-clause substring. Not used as path arguments.</li>
-<li>The <code>strm_path</code> reading logic in <code>_insert_episode</code>
-(lines 1119-1126) still tries to <code>open(strm_path)</code>, but the
-sync passes <code>""</code> — the file system is empty, the try-except
-swallows, and the <code>strm_url</code> arg flows in from the
-<code>migrate_to_plugin_paths</code>-style <code>c18</code> fallback.</li>
-</ul>
 
 <footer class="site">
 <span>← Previous: <a href="catalog_check-py.html">catalog_check.py</a></span>

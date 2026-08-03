@@ -24,10 +24,12 @@
 </div>
 
 <h2>Role</h2>
-<p>Long-running <code>xbmc.Monitor</code> daemon. On startup runs the .strm →
-plugin:// migration, then schedules one sync per provider at a staggered
-6-hour cadence and polls a folder of "force-sync" marker files every 30 s so
-manual triggers can fire out of schedule.</p>
+<p>Long-running <code>xbmc.Monitor</code> daemon. On startup runs
+<a href="library_sync-py.html"><code>library_sync.migrate_to_plugin_paths()</code></a>
+to reconcile path rows in the DB (idempotent — a no-op once the DB is in
+the target state), then schedules one sync per provider at a staggered
+6-hour cadence and polls a folder of "force-sync" marker files every 30 s
+so manual triggers can fire out of schedule.</p>
 
 <h2>Module-level configuration</h2>
 
@@ -58,9 +60,11 @@ daemon logs and returns without scheduling syncs (libraries are written by
 the master box only; followers just read the shared MariaDB). In
 <em>master mode</em> it runs
 <a href="library_sync-py.html"><code>library_sync.migrate_to_plugin_paths()</code></a>
-once (idempotent — does nothing if the migration's already been done), then
-initialises <code>self._next_sync[provider]</code> for every provider to
-the next future slot in the day.</p>
+once (idempotent — re-establishes the invariant that all episode / movie
+files hang off <code>PLUGIN_SOURCE_PATH</code> and all disk-folder path
+rows have <code>exclude=1</code> — a no-op if the DB is already clean),
+then initialises <code>self._next_sync[provider]</code> for every
+provider to the next future slot in the day.</p>
 <div class="callout warn"><span class="callout-title">BBC respect TV-license setting</span>
 <p>If <code>has_tv_license</code> is false, BBC is <em>not</em> added to
 <code>self._next_sync</code>; the loop at line 110 then skips it. This is
@@ -90,7 +94,7 @@ the scheduled slot. The implementation deliberately does nothing if a sync
 for that provider is already running: <em>"Force-sync marker for 'c4'
 ignored — sync already running"</em>.</p>
 <div class="callout warn"><span class="callout-title">Why marker files instead of JSON-RPC?</span>
-<p>Kodi 21's <code>Addons.ExecuteAddon</code> no longer invokes a
+<p>Kodi 21's <code>Addons.ExecuteAddon</code> does not invoke a
 <code>python.pluginsource</code> addon with query-string params — it loads
 the addon's default entry-point without forwarding argv. JSON-RPC
 <code>RunPlugin</code> is also unreliable for this. The marker-file approach
@@ -127,10 +131,15 @@ which is why <a href="library_sync-py.html"><code>library_sync._get_db()</code><
 uses <code>threading.local()</code> for its DB connections.</p>
 
 <div class="callout danger"><span class="callout-title">Daemon thread + pymysql = corruption if you share a connection</span>
-<p>See <a href="../pages/troubleshooting.html">troubleshooting</a>. The original
-single-connection design corrupted packet streams when two provider syncs
-hit the same socket at once. Never share a <code>pymysql</code> connection
-across the daemon threads spawned here.</p>
+<p>See <a href="../pages/troubleshooting.html">troubleshooting</a>. Daemon
+threads spawned here each establish their own
+<code>pymysql.connect()</code> via
+<a href="library_sync-py.html"><code>library_sync._get_db()</code></a>'s
+<code>threading.local()</code> cache. Never share a
+<code>pymysql</code> connection across the daemon threads spawned here —
+concurrent queries on the same socket corrupt the MySQL packet stream
+(<em>"Packet sequence number wrong - got 2 expected 1"</em> /
+<em>"'NoneType' object has no attribute 'read'"</em>).</p>
 </div>
 
 <h2>Lifecycle log messages you'll see in <code>kodi.log</code></h2>

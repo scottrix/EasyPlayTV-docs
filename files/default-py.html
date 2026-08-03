@@ -17,194 +17,184 @@
 
 <div class="file-meta">
 <span><strong>Path</strong> <code>/default.py</code></span>
-<span><strong>Lines</strong> 1,337</span>
+<span><strong>Lines</strong> 335</span>
 <span><strong>Type</strong> python.pluginsource (Kodi-invoked)</span>
 <span><strong>Stateless?</strong> yes — re-imported per call</span>
 <span><strong>← invoked by</strong> Kodi (one fresh interpreter per call)</span>
 </div>
 
 <h2>Role</h2>
-<p>The Kodi plugin entry-point. Kodi launches a new Python interpreter, runs
+<p>Kodi's plugin entry-point. Kodi launches a new Python interpreter, runs
 this script with <code>sys.argv</code> shaped like
-<code>["plugin://plugin.video.easyplaytv/", handle, "?mode=…&action=…"]</code>,
-and expects the script to either populate the directory listing for
-<code>handle</code> (with <code>xbmcplugin.addDirectoryItems</code>) or hand
-back a playable <code>ListItem</code> (resolved by the chosen
-<code>inputstream.adaptive</code> DASH item).</p>
+<code>["plugin://plugin.video.easyplaytv/", handle, "?mode=…&action=…&…"]</code>,
+and expects the script to either populate a directory listing for
+<code>handle</code> (with <code>xbmcplugin.addDirectoryItem</code>) or hand
+back a playable <code>ListItem</code> via
+<code>xbmcplugin.setResolvedUrl</code>.</p>
 
-<p>The script itself is one big dispatch table — it pulls a routing key out of
-the query string then calls the matching <code>list_*</code> / <code>resolve_*</code>
-helper. Everything substantive lives in <code>resources/lib/</code>; this file
-just <em>routes.</em></p>
+<p>The script is a single dispatch table — it pulls a routing key from the
+query string and calls the matching <code>list_*</code> / <code>resolve_*</code>
+helper. Everything substantive (sync engine, provider resolvers, TMDb
+enrichment) lives in <code>resources/lib/</code>; this file just
+<em>routes</em>.</p>
 
-<h2>Module-level constants</h2>
-
-<div class="fn">
-<span class="fn-sig">BASE_URL, HANDLE, _ADDON</span>
-<p>Standard Kodi plugin boilerplate, lines 3–5. <code>BASE_URL</code> is the
-<code>plugin://</code> URL Kodi invoked us under; <code>HANDLE</code> is the
-integer directory handle your <code>addDirectoryItem</code> calls must target;
-<code>_ADDON</code> is the cached <code>xbmcaddon.Addon("plugin.video.easyplaytv")</code>
-used everywhere to read settings.</p>
+<div class="callout info">
+<span class="callout-title">Movies & Series are not browsed through the addon</span>
+<p>The addon's plugin UI offers only one tile — <strong>Live TV</strong>.
+Movies and TV Shows are browsed through Kodi's own library windows after
+<a href="library_sync-py.html"><code>library_sync.py</code></a> has written
+the catalogue directly into the MariaDB video database. When the user
+clicks a movie or episode in Kodi's library, Kodi re-invokes this script
+with <code>?action=resolve_vod&provider=…&episode_id=…</code> (the
+extension stored in the <code>files.strFilename</code> column); the
+dispatch table routes that to <a href="#resolve-vod"><code>_resolve_vod</code></a>
+below.</p>
 </div>
 
+<h2>Module-level constants (lines 1–53)</h2>
+
 <div class="fn">
-<span class="fn-sig">CACHE_TTL = 600 · VOD_CACHE_TTL = 6*3600 · VOD_CACHE_DIR</span>
-<p>Two-tier caching. Live-TV listings cache for 10 min on disk under
-<code>resources/cache/</code> (shipped with the addon). VOD catalogue caches
-for 6 h to match the service's sync cadence — see
-<a href="library_sync-py.html"><code>library_sync.py</code></a>. Cache files are
-named <code>vod_<genre_id>.json</code>.</p>
+<span class="fn-sig">BASE_URL, HANDLE, _ADDON · lines 3–5</span>
+<p>Standard Kodi plugin boilerplate. <code>BASE_URL</code> is the
+<code>plugin://</code> URL Kodi invoked us under; <code>HANDLE</code> is
+the integer directory handle your <code>addDirectoryItem</code> calls must
+target; <code>_ADDON</code> is the cached
+<code>xbmcaddon.Addon("plugin.video.easyplaytv")</code> used to read
+settings (<code>has_tv_license</code>, ITVX creds, max_resolution, …).</p>
 </div>
 
-<h3>Channel tables (lines 15–52)</h3>
+<h3 id="channel-tables">Channel tables (lines 11–52)</h3>
 <table>
 <thead><tr><th>Name</th><th>Shape</th><th>Used by</th></tr></thead>
 <tbody>
-<tr><td><code>BBC_LIVE_CHANNELS</code></td><td>tuple of (<em>live_id, label, group_id</em>)</td><td><code>list_live()</code> — gated on <code>has_tv_license</code></td></tr>
-<tr><td><code>CUTV_UK_CHANNELS</code></td><td>tuple of (<em>channel_id, label, provider, group_id</em>)</td><td><code>list_live()</code> — Sky News, STV, C4 family, My5 family, Blaze</td></tr>
-<tr><td><code>ITVX_LIVE_CHANNELS</code></td><td>tuple of (<em>channel_code, label, group_id</em>)</td><td><code>list_live()</code> — ITV1–ITV4 + ITVBe (resolved by <a href="itvx-py.html"><code>itvx.resolve_live()</code></a>)</td></tr>
+<tr><td><code>BBC_LIVE_CHANNELS</code></td><td>tuple of (<em>live_id, label, icon_name</em>)</td><td><code>list_live()</code> — gated on <code>has_tv_license</code></td></tr>
+<tr><td><code>CUTV_UK_CHANNELS</code></td><td>tuple of (<em>channel_id, label, provider_module, icon_name</em>)</td><td><code>list_live()</code> — Sky News, STV +1, C4 family, My5 family, Blaze</td></tr>
+<tr><td><code>ITVX_LIVE_CHANNELS</code></td><td>tuple of (<em>channel_code, label, icon_name</em>)</td><td><code>list_live()</code> — ITV1–ITV4 + ITVBe (resolved by <a href="itvx-py.html"><code>itvx.resolve()</code></a>)</td></tr>
 </tbody>
 </table>
 
 <h2>Routing helpers</h2>
 
 <div class="fn">
-<span class="fn-sig">build_url(**kwargs) -> str · line 113</span>
-<p>Builds a plugin URL by urlencoding kwargs onto <code>BASE_URL</code>. Used
-for every <code>ListItem</code> path so Kodi can route back through this
-script on click. <span class="pill muted">← called by every list_* function</span></p>
+<span class="fn-sig">build_url(**kwargs) -> str · line 61</span>
+<p>Builds a plugin URL by urlencoding kwargs onto <code>BASE_URL</code>.
+Used for every <code>ListItem</code> path so Kodi can route back through
+this script on click. <span class="pill muted">← called by every list_* and _live_channel_item</span></p>
 </div>
 
 <div class="fn">
-<span class="fn-sig">_resolve_channel(resolver_module, resolver_fn, channel_id, channel_name) · line 117</span>
+<span class="fn-sig">_resolve_channel(resolver_module, resolver_fn, channel_id, channel_name) · line 65</span>
 <p>Wraps <em>"import the provider module, call its resolver, set up DASH,
 resolve the ListItem"</em>. Short-circuits with a notification if BBC is
-selected and <code>has_tv_license</code> is false (line 119). Calls
+selected and <code>has_tv_license</code> is false (line 67). Calls
 <a href="init-py.html"><code>setup_dash_item()</code></a> with the manifest +
 license data returned by the provider.</p>
 <div class="callout warn"><span class="callout-title">resolve must not swallow the manifest URL</span>
-<p>The resolver returns a tuple of (<em>manifest_url, license_url, headers, payload, …</code>); the caller passes
-all of it onward as kwargs. If you add a new provider here, be sure its resolver
-<em>actually returns a manifest URL</em> (not a top-level M3U8 to be played
-natively) — only DASH via <code>inputstream.adaptive</code> is supported.</p>
+<p>The resolver returns a tuple of (<em>manifest_url, license_url, headers, payload, …</em>);
+the caller passes all of it onward as kwargs. If you add a new provider
+here, be sure its resolver <em>actually returns a manifest URL</em> (not a
+top-level M3U8 to be played natively) — only DASH via
+<code>inputstream.adaptive</code> is supported.</p>
 </div>
-</p>
 </div>
 
-<div class="fn">
-<span class="fn-sig">_resolve_vod(provider, episode_id, **kwargs) · line 159</span>
+<div class="fn" id="resolve-vod">
+<span class="fn-sig">_resolve_vod(provider, episode_id, **kwargs) · line 107</span>
 <p>VOD play dispatcher. Imports the matching provider module
-(<code>my5</code>, <code>c4</code>, <code>itvx</code>, <code>bbc</code>, etc.), invokes
-its <code>resolve_vod(episode_id, **kwargs)</code>, and hands the resulting
-listitem to <code>xbmcplugin.setResolvedUrl</code>.</p>
+(<code>my5</code>, <code>c4</code>, <code>itvx</code>, <code>bbc</code>,
+<code>stv</code>, <code>blaze</code>) and invokes its
+<code>resolve_vod(episode_id, listitem, …)</code>, then hands the
+populated listitem to <code>xbmcplugin.setResolvedUrl</code>.</p>
+
+<p>Before dispatch, it composes a display label via
+<a href="genres-py.html"><code>PROVIDER_LABELS</code></a> + the
+<code>show_title</code> / <code>title</code> kwargs so the player-side
+listitem carries the same <code>"[ITVX] Ackley Bridge - 1x01. Pilot"</code>
+string the folder-side listitem had. This matters because Kodi caches the
+player's listitem metadata as the cached folder listitem once playback
+ends — if the labels don't match, the folder row's
+<code>SxxExx</code> prefix disappears.</p>
+
+<p>The function also bakes <code>setInfo{season, episode, title}</code>
+into the listitem. The skin computes the <code>"1x01."</code> prefix
+zero-padded from those fields. The comment at lines 167–220 explains the
+ordering: <code>setInfo</code> must be applied <em>after</em> the provider
+resolver runs because <code>setup_dash_item</code> calls
+<code>listitem.setPath()</code>, and on Kodi 21 <code>setPath()</code>
+resets the listitem's VideoInfoTag, wiping any <code>setInfo</code> set
+before.</p>
+
+<p>Providers dispatched:</p>
+<table>
+<thead><tr><th>Provider</th><th>Resolver call</th></tr></thead>
+<tbody>
+<tr><td><strong>my5</strong></td><td><a href="my5-py.html"><code>my5.resolve_vod(episode_id, li, standalone=…, f_name=…, show_f_name=…)</code></a></td></tr>
+<tr><td><strong>itvx</strong></td><td><a href="itvx-py.html"><code>itvx.resolve_vod(episode_id, li, playlist_url)</code></a></td></tr>
+<tr><td><strong>bbc</strong></td><td><a href="bbc-py.html"><code>bbc.resolve_vod(episode_id, li)</code></a></td></tr>
+<tr><td><strong>c4</strong></td><td><a href="c4-py.html"><code>c4.resolve_vod(episode_id, asset_id, li)</code></a></td></tr>
+<tr><td><strong>stv</strong></td><td><a href="stv_vod-py.html"><code>stv_vod.resolve_vod(episode_id, li, drm_enabled=…)</code></a></td></tr>
+<tr><td><strong>blaze</strong></td><td><a href="blaze_vod-py.html"><code>blaze_vod.resolve_vod(stream_base, stream_key, episode_id, li)</code></a></td></tr>
+</tbody>
+</table>
 </div>
 
 <h2>Directory-listing functions</h2>
 
 <div class="fn">
-<span class="fn-sig">list_main() · line 289</span>
-<p>Top-level menu when Kodi opens the addon root: "Live TV", "Movies",
-"Series". Uses <code>_icon_path()</code> for the bundled PNG icons in
-<code>resources/icons/</code>.</p>
+<span class="fn-sig">list_main() · line 187</span>
+<p>Top-level menu when Kodi opens the addon root. Renders a single
+directory item — <strong>Live TV</strong> — pointing at
+<code>?mode=live_tv</code>. Movies and Series are deliberately not listed
+here; the user browses those through Kodi's own library views (which
+read the rows <a href="library_sync-py.html"><code>library_sync</code></a>
+wrote into the DB).</p>
 </div>
 
 <div class="fn">
-<span class="fn-sig">list_live() · line 313</span>
+<span class="fn-sig">_live_channel_item(chan_id, chan_name, icon_name, resolver, **extra_params) · line 198</span>
+<p>Helper for one live-channel row. Builds a <code>ListItem</code> with
+<code>IsPlayable=true</code> (line 200), attaches the bundled PNG icon
+from <code>resources/icons/<icon_name>.png</code> (via
+<code>_icon_path()</code>), and returns <code>(listitem, build_url(action='resolve', resolver=…, channel_id=…, channel_name=…))</code>.</p>
+</div>
+
+<div class="fn">
+<span class="fn-sig">list_live() · line 209</span>
 <p>Stitches the three channel tables (<code>BBC_LIVE_CHANNELS</code>,
-<code>CUTV_UK_CHANNELS</code>, <code>ITVX_LIVE_CHANNELS</code>) into a single
-directory listing. Each item's URL is <code>build_url(action='resolve_live',
-provider=…, channel_id=…)</code>. Path includes a fanart thumb if one's
-available. Live listings are cached for <code>CACHE_TTL</code> seconds.</p>
+<code>CUTV_UK_CHANNELS</code>, <code>ITVX_LIVE_CHANNELS</code>) into a
+single flat directory listing. BBC rows are gated on
+<code>has_tv_license</code>. After all rows are added, forces Kodi's
+"List" view-mode (50) so the skin's right-side media-info panel doesn't
+pop up — channel icons render correctly in the left-side list.</p>
 </div>
 
-<div class="fn">
-<span class="fn-sig">list_vod_genres() · line 342</span>
-<p>Renders the unified genre grid from
-<a href="genres-py.html"><code>UNIFIED_GENRES</code></a>. Tracks per-genre
-"available providers" so genres that have no providers are hidden (e.g.
-"Music" hides if BBC is disabled by no-TV-license). Each tile URL becomes
-<code>?mode=vod_shows&genre_id=<id></code>.</p>
-</div>
+<h2>The dispatch table (lines ~231–285)</h2>
 
-<div class="fn">
-<span class="fn-sig">list_movie_genres() / list_movies(genre, page=1) · lines 450 & 469</span>
-<p>Movie browse entry points. <code>list_movies</code> reads from the Kodi
-library via <a href="movies_db-py.html"><code>movies_db.get_movies(genre, …)</code></a>
-— the data is already synced by <code>service.py</code>; no live HTTP fetch
-happens here. Pagination through <code>?page=N</code>.</p>
-</div>
-
-<div class="fn">
-<span class="fn-sig">list_vod_shows(genre_id, page=1, letter=None) · line 656</span>
-<p>Series browse. Same principle as movies: pulls from the Kodi library via
-<a href="series_db-py.html"><code>series_db.get_series(genre, …)</code></a>.
-Also supports an A–Z letter filter (<code>?letter=B</code>).</p>
-</div>
-
-<div class="fn">
-<span class="fn-sig">list_vod_provider_shows(provider, genre_id, page=1) · line 849</span>
-<p>Provider-filtered series browse. Used by the "Browse ITVX only" tiles in
-the per-provider header row. Same backing query as
-<code>list_vod_shows</code> with an additional <code>provider</code> filter
-that's mapped onto the tvshow title prefix (e.g.
-<code>[ITVX]%</code>).</p>
-</div>
-
-<div class="fn">
-<span class="fn-sig">list_vod_seasons(provider, f_name) · line 874</span>
-<p>Grouped-seasons listing dispatched by provider: BBC, STV, Blaze each
-have provider-specific season-listing code (<code>list_vod_bbc_seasons</code>,
-<code>list_vod_stv_seasons</code>, <code>list_vod_blaze_seasons</code>)
-because their APIs differ enough that a unified path was impractical.
-ITVX/C4/My5 fall through to the DB-backed listing
-(<code>list_vod_seasons_db</code>) because their seasons have been pre-synced
-into the Kodi library.</p>
-</div>
-
-<div class="fn">
-<span class="fn-sig">list_vod_seasons_db(show_id) · line 986 · list_vod_episodes_db(season_id, show_id) · line 1006</span>
-<p>These read straight from the Kodi library tables
-(<code>seasons</code>, <code>episode</code>) via
-<a href="series_db-py.html"><code>series_db.get_seasons</code></a> and
-<a href="series_db-py.html"><code>series_db.get_episodes</code></a>.
-This is the fast path used after a sync completes — no live HTTP at all.</p>
-</div>
-
-<div class="fn">
-<span class="fn-sig">list_vod_episodes(provider, **kwargs) · line 1073</span>
-<p>Direct-to-provider episode listing for the BBC/STV/Blaze cases that
-bypass the DB. Each episode's URL is built with
-<a href="strm-py.html"><code>strm._build_episode_strm_url()</code></a> and
-resolved by the matching provider's <code>resolve_vod</code> on click.</p>
-</div>
-
-<h3>Provider-specialised season listers</h3>
-<table>
-<thead><tr><th>Function</th><th>Line</th><th>Backed by</th></tr></thead>
-<tbody>
-<tr><td><code>list_vod_bbc_seasons(pid)</code></td><td>1170</td><td><a href="bbc_vod-py.html"><code>bbc_vod.list_seasons</code></a> (live scrape)</td></tr>
-<tr><td><code>list_vod_stv_seasons(f_name)</code></td><td>1190</td><td><a href="stv_vod-py.html"><code>stv_vod.list_seasons</code></a></td></tr>
-<tr><td><code>list_vod_blaze_seasons(f_name)</code></td><td>1208</td><td><a href="blaze_vod-py.html"><code>blaze_vod.list_seasons</code></a></td></tr>
-<tr><td><code>list_vod_blaze_episodes(f_name, season_id, stream_base)</code></td><td>1228</td><td><a href="blaze_vod-py.html"><code>blaze_vod.list_episodes</code></a></td></tr>
-</tbody>
-</table>
-
-<h2>The dispatch table (lines ~1196–1337)</h2>
-<p>The <code>if __name__ == "__main__"</code> block (currently a long
-<code>action == '…' / elif action == '…'</code> chain, with an extra
-<code>mode == '…'</code> chain for directory-listing routes) is the only place
-where Kodi's argv gets mapped to a function. Two routing keys are used:</p>
+<p>The <code>if __name__ == "__main__"</code> block at the bottom is one
+long <code>action == '…' / elif action == '…'</code> chain with a small
+<code>mode == '…'</code> chain for directory-listing routes. Two routing
+keys are used:</p>
 <table>
 <thead><tr><th>Key</th><th>Purpose</th><th>Examples</th></tr></thead>
 <tbody>
-<tr><td><code>action=</code></td><td>One-shot verbs (resolve, sync, login, logout, backfill_art, prefix_titles, play_strm)</td><td><code>resolve_live</code>, <code>resolve_vod</code>, <code>itvx_login</code>, <code>sync</code>, <code>backfill_art</code></td></tr>
-<tr><td><code>mode=</code></td><td>Directory listings — Kodi opens a folder</td><td><code>live_tv</code>, <code>movies</code>, <code>series</code>, <code>vod_shows</code>, <code>vod_seasons</code>, <code>vod_episodes_db</code></td></tr>
+<tr><td><code>action=</code></td><td>One-shot verbs — resolve-and-play, sync, login, maintenance helpers</td><td><code>resolve</code>, <code>resolve_vod</code>, <code>itvx_login</code>, <code>sync</code>, <code>backfill_art</code>, <code>prefix_titles</code></td></tr>
+<tr><td><code>mode=</code></td><td>Directory listings — Kodi opens a folder</td><td><code>live_tv</code></td></tr>
+</tbody>
+</table>
+
+<h3>Manual sync & action routes</h3>
+<table>
+<thead><tr><th>Route</th><th>Effect</th></tr></thead>
+<tbody>
+<tr><td><code>action=sync&provider=<p></code></td><td>Kicks a sync — see below for blocking vs daemon</td></tr>
+<tr><td><code>action=itvx_login</code> · <code>itvx_logout</code></td><td>Triggers ITVX OAuth — see <a href="itvx-py.html"><code>itvx.login()</code></a></td></tr>
+<tr><td><code>action=backfill_art</code></td><td><a href="library_sync-py.html"><code>library_sync.backfill_series_art()</code></a> — refresh missing posters/fanart</td></tr>
+<tr><td><code>action=prefix_titles</code></td><td><a href="library_sync-py.html"><code>prefix_existing_movies()</code></a> + <code>prefix_existing_tvshows()</code> + <code>fix_sort_titles()</code> — maintenance helper to retrofit the <code>[PROVIDER]</code> prefix onto rows pre-dating the convention</td></tr>
 </tbody>
 </table>
 
 <div class="callout warn"><span class="callout-title">Cache-to-disc caveat for sync via JSON-RPC</span>
-<p>Lines 1288–92 explicitly call <code>xbmcplugin.endOfDirectory(HANDLE,
+<p>Lines 269–73 explicitly call <code>xbmcplugin.endOfDirectory(HANDLE,
 succeeded=False, cacheToDisc=False)</code> when triggering
 <code>?action=sync&provider=…</code>. Without this, Kodi's CGUIMediaWindow
 treats the URL as the current folder and re-fetches it on the 7-minute
@@ -213,24 +203,21 @@ auto-refresh — which would re-fire the sync every 7 min.</p>
 
 <div class="callout warn"><span class="callout-title">Sync has two modes</span>
 <p>If <code>?action=sync&blocking=1</code> the sync runs in the calling
-thread (so the script interpreter stays alive until completion — needed when
-firing via JSON-RPC <code>RunPlugin</code>). Without <code>blocking=1</code>
-it spawns a daemon thread and returns immediately. Daemon threads die when
-the calling script returns, so fire-and-forget <em>only</em> works from
-within Kodi's UI navigation; from JSON-RPC you must use
-<code>blocking=1</code> or use the marker-file mechanism in
+thread (so the script interpreter stays alive until completion — needed
+when firing via JSON-RPC <code>RunPlugin</code>). Without
+<code>blocking=1</code> it spawns a daemon thread and returns immediately.
+Daemon threads die when the calling script returns, so fire-and-forget
+<em>only</em> works from within Kodi's UI navigation; from JSON-RPC you
+must use <code>blocking=1</code> or use the marker-file mechanism in
 <a href="service-py.html"><code>service.py</code></a> instead.</p>
 </div>
 
-<h3>Manual sync & action routes</h3>
+<h3>Resolve routes (Kodi's player calls these)</h3>
 <table>
 <thead><tr><th>Route</th><th>Effect</th></tr></thead>
 <tbody>
-<tr><td><code>action=sync&provider=<p></code></td><td>Kicks a sync — see above for blocking vs daemon</td></tr>
-<tr><td><code>action=itvx_login</code> · <code>itvx_logout</code></td><td>Triggers ITVX OAuth — see <a href="itvx-py.html"><code>itvx.login()</code></a></td></tr>
-<tr><td><code>action=backfill_art</code></td><td><a href="library_sync-py.html"><code>library_sync.backfill_series_art()</code></a> — refresh missing posters/fanart</td></tr>
-<tr><td><code>action=prefix_titles</code></td><td><a href="library_sync-py.html"><code>prefix_existing_movies()</code></a> + <code>prefix_existing_tvshows()</code> + <code>fix_sort_titles()</code> — one-off migration helper</td></tr>
-<tr><td><code>action=play_strm&strm_path=…</code></td><td>Legacy entry — plays a .strm file by path. Most .strm files have been removed (see <a href="../pages/path-migration.html">migration log</a>); kept for back-compat</td></tr>
+<tr><td><code>action=resolve&resolver=<module>&channel_id=…&channel_name=…</code></td><td>Live-TV channel play. Dispatches via <code>_resolve_channel</code> to the named provider module's <code>resolve(channel_id, listitem)</code>.</td></tr>
+<tr><td><code>action=resolve_vod&provider=…&episode_id=…&title=…&season=…&episode=…&…</code></td><td>VOD episode / movie play. Dispatches via <code>_resolve_vod</code> to the matching provider's <code>resolve_vod</code>. Kodi's library invokes this when the user clicks an episode / movie row — the URL in <code>files.strFilename</code> is the query-string of this same plugin URL.</td></tr>
 </tbody>
 </table>
 

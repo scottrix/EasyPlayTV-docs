@@ -24,8 +24,10 @@
 </div>
 
 <h2>Role</h2>
-<p>Two responsibilities despite the legacy name (back when the addon wrote
-<code>.strm</code> files on disk):</p>
+<p>Two responsibilities (the module name <code>strm</code> is historical —
+the addon does not write <code>.strm</code> files on disk; all episode and
+movie files live as <code>plugin://</code> URLs in
+<code>PLUGIN_SOURCE_PATH</code> rows in the Kodi DB):</p>
 <ol>
 <li><strong>Show aggregation</strong> — call every provider's
 <code>list_shows</code> for every unified genre and return a single flat
@@ -37,19 +39,25 @@ single episode dict from <code>list_episodes</code>), build a
 URL that Kodi's plugin entry point can route to the right resolver.</li>
 </ol>
 
-<h2>Dead variables (don't be confused)</h2>
-<div class="callout warn"><span class="callout-title">STRM_MOVIES_DIR, STRM_SERIES_DIR, STATE_FILE all dead</span>
-<p>Lines 13–15 still define这三个 constants, but they're no longer used as file
-paths — the addon removed all <code>.strm</code> file IO in the path-migration
-cleanup (see <a href="../pages/path-migration.html">migration log</a>).
-<code>STRM_MOVIES_DIR</code> / <code>STRM_SERIES_DIR</code> are referenced by
-nothing; <code>STATE_FILE = strm_state.json</code> was deleted from disk
-and the live state file used by
-<a href="library_sync-py.html"><code>library_sync.py</code></a> is
+<h2>Module-level constants (lines 11–15)</h2>
+<div class="callout warn"><span class="callout-title">STRM_MOVIES_DIR / STRM_SERIES_DIR / STATE_FILE defined but unused</span>
+<p><code>STRM_MOVIES_DIR</code> and <code>STRM_SERIES_DIR</code> are
+defined at module load but never referenced by any function in this
+module — the addon does not write <code>.strm</code> files on disk;
+all episode and movie file rows live as <code>plugin://…</code> URLs
+under <code>PLUGIN_SOURCE_PATH</code> in the Kodi DB.
+<code>STATE_FILE</code> points at <code>strm_state.json</code>, but the
+live state file the sync engine reads is
 <code>library_sync_state.json</code> + <code>series_sync_state.json</code>
-instead. These are kept purely as a historical reference — you can safely
+(see <a href="library_sync-py.html"><code>library_sync.py</code></a>).
+The three constants exist purely for historical traceability — safe to
 delete them in a refactor.</p>
 </div>
+
+<p><code>STRM_DIR</code> (line 12) is still used — through
+<code>_plugin_lib</code> at line 17 it sets up <code>sys.path</code> so
+the bare-name <code>from genres import …</code> at line 23 resolves
+whether the module is imported from inside Kodi or run standalone.</p>
 
 <h2>Provider import dispatcher</h2>
 <div class="fn">

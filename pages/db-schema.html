@@ -26,29 +26,29 @@ columns it touches — generated from real production rows + the
 <table>
 <thead><tr><th>Table</th><th>Used for</th><th>Writers</th><th>Readers</th></tr></thead>
 <tbody>
-<tr><td><code>path</code></td><td>One row per source path (disk folder OR plugin URL)</td><td><a href="../files/library_sync-py.html">library_sync.ensure_*, migrate_*, _ensure_path</a></td><td><a href="../files/series_db-py.html">series_db._eptv_show_ids_sql</a>, <a href="../files/movies_db-py.html">movies_db._base_movie_query</a></td></tr>
-<tr><td><code>files</code></td><td>One row per file (strFilename = plugin query-string OR legacy .strm filename)</td><td><a href="../files/library_sync-py.html">library_sync._insert_movie, _insert_episode, migrate_to_plugin_paths</a></td><td><a href="../files/movies_db-py.html">movies_db.get_watch_status</a>, <a href="../files/series_db-py.html">series_db.get_episodes</a></td></tr>
-<tr><td><code>movie</code></td><td>One row per movie</td><td><a href="../files/library_sync-py.html">library_sync._insert_movie</a></td><td><a href="../files/movies_db-py.html">movies_db.get_movies, _base_movie_query</a></td></tr>
-<tr><td><code>tvshow</code></td><td>One row per series</td><td><a href="../files/library_sync-py.html">library_sync._insert_tvshow, prefix_existing_tvshows, fix_sort_titles, backfill_series_art</a></td><td><a href="../files/series_db-py.html">series_db.get_series, get_series_by_id, get_seasons</a></td></tr>
-<tr><td><code>seasons</code></td><td>One row per (show, season_number)</td><td><a href="../files/library_sync-py.html">library_sync._ensure_season</a></td><td><a href="../files/series_db-py.html">series_db.get_seasons</a></td></tr>
-<tr><td><code>episode</code></td><td>One row per episode</td><td><a href="../files/library_sync-py.html">library_sync._insert_episode</a>, migrate_to_plugin_paths</td><td><a href="../files/series_db-py.html">series_db.get_episodes</a></td></tr>
-<tr><td><code>tvshowlinkpath</code></td><td>Many-to-many between tvshow and path (a show can hang off multiple source paths)</td><td><a href="../files/library_sync-py.html">library_sync._insert_tvshow, migrate_to_plugin_paths</a></td><td><a href="../files/series_db-py.html">series_db._eptv_show_ids_sql</a></td></tr>
-<tr><td><code>uniqueid</code></td><td>Provider ids (tmdb / imdb / tvdb per media_id+type)</td><td><a href="../files/library_sync-py.html">library_sync._insert_movie, _insert_tvshow, _insert_episode</a></td><td><a href="../files/series_db-py.html">series_db.get_series_by_id</a></td></tr>
-<tr><td><code>genre</code> + <code>genre_link</code></td><td>Genre table + linking to tvshow/movie</td><td><a href="../files/library_sync-py.html">library_sync._get_or_create_genre, _insert_tvshow, _insert_movie</a></td><td><a href="../files/series_db-py.html">series_db.get_series_genres</a>, <a href="../files/movies_db-py.html">movies_db.get_genres</a></td></tr>
-<tr><td><code>art</code></td><td>Image rows (poster, fanart, thumb, season poster, episode still)</td><td><a href="../files/library_sync-py.html">library_sync._insert_movie, _insert_tvshow, _insert_episode, _ensure_season, backfill_series_art</a></td><td><a href="../files/series_db-py.html">series_db</a>, <a href="../files/movies_db-py.html">movies_db</a> as LEFT JOINs in their queries</td></tr>
-<tr><td><code>videoversion</code></td><td>Kodi 21's per-media-version row — every movie needs one</td><td><a href="../files/library_sync-py.html">library_sync._insert_movie, migrate_to_plugin_paths</a></td><td>Kodi's scanner</td></tr>
-<tr><td><code>bookmark</code></td><td>Resume points + play counts (via join to <code>files.playCount</code>)</td><td>Kodi's player</td><td><a href="../files/movies_db-py.html">movies_db.get_watch_status</a>, <a href="../files/series_db-py.html">series_db.get_watch_status</a></td></tr>
+<tr><td><code>path</code></td><td>One row per source path (disk folder OR plugin URL)</td><td><a href="../files/library_sync-py.html">library_sync.ensure_*, _ensure_path</a></td><td>Kodi library windows, Kodi scanner, <a href="../files/library_sync-py.html">library_sync._purge_stale_*</a></td></tr>
+<tr><td><code>files</code></td><td>One row per file (strFilename = plugin query-string for the play URL)</td><td><a href="../files/library_sync-py.html">library_sync._insert_movie, _insert_episode</a></td><td>Kodi player (resume + playCount), library_sync stale cleanup</td></tr>
+<tr><td><code>movie</code></td><td>One row per movie</td><td><a href="../files/library_sync-py.html">library_sync._insert_movie</a></td><td>Kodi library windows, library_sync stale cleanup</td></tr>
+<tr><td><code>tvshow</code></td><td>One row per series</td><td><a href="../files/library_sync-py.html">library_sync._insert_tvshow, prefix_existing_tvshows, fix_sort_titles, backfill_series_art</a></td><td>Kodi library windows, library_sync stale cleanup</td></tr>
+<tr><td><code>seasons</code></td><td>One row per (show, season_number)</td><td><a href="../files/library_sync-py.html">library_sync._ensure_season</a></td><td>Kodi library windows</td></tr>
+<tr><td><code>episode</code></td><td>One row per episode</td><td><a href="../files/library_sync-py.html">library_sync._insert_episode</a></td><td>Kodi library windows, library_sync stale cleanup</td></tr>
+<tr><td><code>tvshowlinkpath</code></td><td>Many-to-many between tvshow and path (a show can hang off multiple source paths)</td><td><a href="../files/library_sync-py.html">library_sync._insert_tvshow</a></td><td>Kodi scanner, library_sync</td></tr>
+<tr><td><code>uniqueid</code></td><td>Provider ids (tmdb / imdb / tvdb per media_id+type)</td><td><a href="../files/library_sync-py.html">library_sync._insert_movie, _insert_tvshow, _insert_episode</a></td><td>Kodi scraper, library_sync de-dup checks</td></tr>
+<tr><td><code>genre</code> + <code>genre_link</code></td><td>Genre table + linking to tvshow/movie</td><td><a href="../files/library_sync-py.html">library_sync._get_or_create_genre, _insert_tvshow, _insert_movie</a></td><td>Kodi library windows (genre tiles)</td></tr>
+<tr><td><code>art</code></td><td>Image rows (poster, fanart, thumb, season poster, episode still)</td><td><a href="../files/library_sync-py.html">library_sync._insert_movie, _insert_tvshow, _insert_episode, _ensure_season, backfill_series_art</a></td><td>Kodi UI (renders the artwork)</td></tr>
+<tr><td><code>videoversion</code></td><td>Kodi 21's per-media-version row — every movie needs one</td><td><a href="../files/library_sync-py.html">library_sync._insert_movie</a></td><td>Kodi's scanner</td></tr>
+<tr><td><code>bookmark</code></td><td>Resume points + play counts (via join to <code>files.playCount</code>)</td><td>Kodi's player</td><td>Kodi UI (resume bar, watch ticks)</td></tr>
 </tbody>
 </table>
 
 <h2>The path row — the most important row in the schema for the addon</h2>
-<p>One row in <code>path</code> holds every file the addon manages. After
-the path migration:</p>
+<p>One row in <code>path</code> holds every file the addon manages. The
+addon relies on two path rows:</p>
 <table>
 <thead><tr><th>idPath</th><th>strPath</th><th>strContent</th><th>strScraper</th><th>exclude</th><th>Purpose</th></tr></thead>
 <tbody>
 <tr><td>485</td><td><code>plugin://plugin.video.easyplaytv/</code></td><td>(varies — set to <code>tvshows</code> by <code>ensure_series_path_config</code>)</td><td>metadata.tvshows.themoviedb.org.python</td><td><strong>1</strong></td><td>The plugin source path where every episode + movie file lives. <code>exclude=1</code> stops Kodi's scanner from creating duplicate un-prefixed rows — see the warning in <a href="../files/library_sync-py.html">ensure_series_path_config</a>.</td></tr>
-<tr><td>various legacy</td><td><code>/home/osmc/.kodi/.../Series/…</code></td><td>various</td><td>various</td><td>1</td><td>Orphan disk-folder paths from the .strm era — all flipped to <code>exclude=1</code> by <code>migrate_to_plugin_paths</code> so Kodi's scanner can't re-attach to them on boot.</td></tr>
+<tr><td>3736</td><td><code>/home/osmc/.kodi/.../Series/</code></td><td>tvshows</td><td>metadata.tvshows.themoviedb.org.python</td><td><strong>1</strong></td><td>The on-disk Series folder that used to hold .strm files. <code>exclude=1</code> on this row means Kodi's scanner can't re-attach to it (or to any per-show sub-folder under it) and create duplicate un-prefixed rows; the only active source is the plugin path.</td></tr>
 </tbody>
 </table>
 
@@ -110,17 +110,16 @@ URL-like strings — but they're <em>different shapes</em>:</p>
 <code>plugin://plugin.video.easyplaytv/?action=resolve_vod&…</code> URL.
 Kodi's player reads this for play.</li>
 <li><code>files.strFilename</code> holds the <em>query-string only</em>
-(<code>?action=resolve_vod&…</code>) for migrated episode rows. This
-is what the addon's
-<a href="../files/series_db-py.html">series_db.get_episodes</a> uses for
-its dedup key.</li>
+(<code>?action=resolve_vod&…</code>) for episode rows. This is what
+the addon uses as the dedup key when reconciling DB contents against
+the live provider catalogues.</li>
 </ul>
 <p>The reason for the mismatch: Kodi uses <code>strFilename</code> as the
-<em>display</em> filename (so it's pretty short) and following the
-migration's design pattern, the path-stripped query-string is what
-visually appears. The actual playback URL is in <code>episode.c18</code>.
-Movies have the equivalent separation: <code>movie.c22</code> holds the
-full URL; <code>files.strFilename</code> holds the query-string.</p>
+<em>display</em> filename (so it's pretty short), so the path-stripped
+query-string is what visually appears. The actual playback URL is in
+<code>episode.c18</code>. Movies have the equivalent separation:
+<code>movie.c22</code> holds the full URL; <code>files.strFilename</code>
+holds the query-string.</p>
 </div>
 
 <h2>The <code>videoversion</code> table (Kodi 21 addition)</h2>
@@ -148,7 +147,7 @@ JOIN movie m ON f.idFile = m.idFile WHERE f.idPath = %s AND f.strFilename = %s</
 </ul>
 
 <footer class="site">
-<span>← Previous: <a href="../files/series_db-py.html">series_db.py</a></span>
+<span>← Previous: <a href="../files/library_sync-py.html">library_sync.py</a></span>
 <span>Next: <a href="provider-matrix.html">Provider matrix</a> →</span>
 </footer>
 </main>

@@ -55,8 +55,7 @@ the result in module globals keyed on the file's mtime — re-reads only if
 the file has been touched. Returns <code>{}</code> on any error, never raises.</p>
 <p>The map's shape is <code>{safe_title: {provider, f_name|pid|slug, ...}}</code>
 and is used by <a href="library_sync-py.html"><code>library_sync.prefix_existing_tvshows()</code></a>
-to retrofit the <code>[PROVIDER]</code> prefix onto rows that were created
-before the prefix convention existed.</p>
+to retrofit the <code>[PROVIDER]</code> prefix onto rows that lack it.</p>
 </div>
 
 <div class="fn">

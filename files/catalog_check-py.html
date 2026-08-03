@@ -19,20 +19,22 @@
 <span><strong>Path</strong> <code>/resources/lib/catalog_check.py</code></span>
 <span><strong>Lines</strong> 51</span>
 <span><strong>Type</strong> stateful helper (small)</span>
-<span><strong>← imported by</strong> default.py (during browse listing)</span>
+<span><strong>← imported by</strong> <a href="default-py.html">default.py</a> (in <code>_resolve_vod</code> 404 handler)</span>
 <span><strong>→ calls</strong> Kodi profile dir IO; one <code>threading.Lock</code></span>
 </div>
 
 <h2>Role</h2>
-<p>Tracks which show titles have been marked "stale" — meaning a recent
-listing fetch returned zero episodes. The UI then greys those rows out
-without forcing a full resync, which avoids hammering the localStorage-y
-state file in <a href="library_sync-py.html"><code>library_sync.py</code></a>.</p>
+<p>Tracks which show titles have been marked stale because their episodes
+went away — written by <a href="default-py.html"><code>default.py:_resolve_vod</code></a>
+when Kodi tries to play an episode whose provider-side URL returns 404 (the
+show was removed from the provider's catalogue), so future attempts
+suppress the retry rather than re-firing the same 404.</p>
 
-<p>This is a <em>browsing</em> safety net, not a sync primitive. The sync
-engine itself doesn't consult this module; it just refreshes the Kodi DB
-directly. The stale list is consulted by <code>default.py</code>'s listing
-functions to decide whether to attach a "stale" label to a listitem.</p>
+<p>The stale set is a <em>playback safety net</em>, not a sync primitive.
+The sync engine itself doesn't consult this module; it just refreshes the
+Kodi DB directly. The stale list is what the playback 404 handler writes
+into and what future resolve_vod calls can read from to short-circuit
+before another network round-trip.</p>
 
 <h2>Storage</h2>
 
@@ -71,14 +73,16 @@ diffs don't churn. Silent on failure (best-effort persistence).</p>
 <span class="fn-sig">mark_stale(title) · line 37</span>
 <p>Adds <code>title</code> to the set under the lock, calls
 <code>_save_stale()</code>, logs at DEBUG level so normal kodi.log noise is
-minimal. Called by <a href="default-py.html"><code>default.py</code></a>
-when an episode-listing fetch comes back empty twice in a row.</p>
+minimal. Called by <a href="default-py.html"><code>default.py:_resolve_vod</code></a>
+when an episode's HTTP fetch returns 404 (the underlying provider stream
+no longer exists or the show was withdrawn).</p>
 </div>
 
 <div class="fn">
 <span class="fn-sig">is_stale(title) -> bool · line 44</span>
-<p>Membership test under the lock. Used by listing code to attach a
-"stale" label or skip rendering.</p>
+<p>Membership test under the lock. Used by the playback resolver to decide
+whether to skip the HTTP fetch and immediately surface a
+<em>"no longer available"</em> notification instead.</p>
 </div>
 
 <div class="fn">

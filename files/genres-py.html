@@ -19,28 +19,29 @@
 <span><strong>Path</strong> <code>/resources/lib/genres.py</code></span>
 <span><strong>Lines</strong> 25</span>
 <span><strong>Type</strong> static lookup tables</span>
-<span><strong>← imported by</strong> default.py, library_sync.py</span>
+<span><strong>← imported by</strong> default.py (<code>PROVIDER_LABELS</code>), strm.py (<code>UNIFIED_GENRES</code>, <code>PROVIDER_LABELS</code>), library_sync.py</span>
 </div>
 
 <h2>Role</h2>
 <p>Three pure-data tables that map between the addon's <em>unified</em> genre
-slugs (what the user clicks in the UI) and each provider's per-genre slugs
-(what each provider's API expects). This is the single source of truth that
-prevents every consumer from hard-coding its own
+slugs and each provider's per-genre slugs. This is the single source of
+truth that prevents every consumer from hard-coding its own
 "films-on-itvx is <code>films</code>, films-on-stv is <code>movies</code>,
-films-on-bbc is <code>films</code>" mapping.</p>
+films-on-bbc is <code>films</code>" mapping. The genres are used by
+<a href="strm-py.html"><code>strm._fetch_movies</code></a> and
+<code>_fetch_series_shows</code> to iterate every per-provider genre slug
+when aggregating the catalogue for sync.</p>
 
 <h2>UNIFIED_GENRES — 17 unified genres</h2>
 
 <div class="fn">
 <span class="fn-sig">UNIFIED_GENRES = [(unified_id, label, [(provider, provider_slug), ...]), ...]</span>
 <p>A list of 17 tuples. Each tuple is <code>(slug, label, providers)</code> —
-<code>slug</code> is what's passed back through
-<a href="default-py.html"><code>default.py</code></a> as
-<code>?mode=vod_shows&genre_id=<slug></code>; <code>label</code> is what
-the user sees in the tile ("Drama & Soaps"); <code>providers</code> is the
-list of (provider-name, that-provider's-own-genre-slug) pairs to query when
-the user drills in.</p>
+<code>slug</code> identifies the unified genre;
+<code>label</code> is the human-readable name;
+<code>providers</code> is the list of
+<code>(provider-name, that-provider's-own-genre-slug)</code> pairs to
+query when fetching the catalogue.</p>
 
 <table>
 <thead><tr><th>Slug</th><th>Label</th><th>Providers</th></tr></thead>
@@ -87,12 +88,12 @@ with no filter. That's why Blaze appears with empty strings in
 <div class="fn">
 <span class="fn-sig">SERIES_GENRES · MOVIE_GENRES · lines 21, 23</span>
 <p>Two <code>set</code>s of unified-genre slugs used to decide whether a
-given tile routes to <code>?mode=vod_shows</code> (series) or
-<code>?mode=movies_genre</code> (movies). Currently
-<code>MOVIE_GENRES = {"films"}</code> and <code>SERIES_GENRES</code> is
-everything else — the split is in code rather than in the
-<code>UNIFIED_GENRES</code> tuple so it's a single one-line tweak if a new
-genre gets classified as a movie.</p>
+given tile's shows are movies or series. <code>MOVIE_GENRES = {"films"}</code>
+and <code>SERIES_GENRES</code> is everything else. Read by
+<a href="strm-py.html"><code>strm._fetch_movies</code></a> (which filters
+to the <code>films</code> slug only) and
+<a href="strm-py.html"><code>strm._fetch_series_shows</code></a>
+(which iterates everything except <code>films</code>).</p>
 </div>
 
 <h2>PROVIDER_LABELS</h2>
