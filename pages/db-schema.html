@@ -27,7 +27,7 @@ columns it touches — generated from real production rows + the
 <thead><tr><th>Table</th><th>Used for</th><th>Writers</th><th>Readers</th></tr></thead>
 <tbody>
 <tr><td><code>path</code></td><td>One row per source path (disk folder OR plugin URL)</td><td><a href="../files/library_sync-py.html">library_sync.ensure_*, _ensure_path</a></td><td>Kodi library windows, Kodi scanner, <a href="../files/library_sync-py.html">library_sync._purge_stale_*</a></td></tr>
-<tr><td><code>files</code></td><td>One row per file (strFilename = plugin query-string for the play URL)</td><td><a href="../files/library_sync-py.html">library_sync._insert_movie, _insert_episode</a></td><td>Kodi player (resume + playCount), library_sync stale cleanup</td></tr>
+<tr><td><code>files</code></td><td>One row per file. For EasyPlayTV rows: <code>strFilename</code> = the full plugin URL (same string as episode.c18 / movie.c22). For Kodi-scraped disk rows: <code>strFilename</code> = the basename.</td><td><a href="../files/library_sync-py.html">library_sync._insert_movie, _insert_episode</a></td><td>Kodi player (resume + playCount), library_sync stale cleanup</td></tr>
 <tr><td><code>movie</code></td><td>One row per movie</td><td><a href="../files/library_sync-py.html">library_sync._insert_movie</a></td><td>Kodi library windows, library_sync stale cleanup</td></tr>
 <tr><td><code>tvshow</code></td><td>One row per series</td><td><a href="../files/library_sync-py.html">library_sync._insert_tvshow, prefix_existing_tvshows, fix_sort_titles, backfill_series_art</a></td><td>Kodi library windows, library_sync stale cleanup</td></tr>
 <tr><td><code>seasons</code></td><td>One row per (show, season_number)</td><td><a href="../files/library_sync-py.html">library_sync._ensure_season</a></td><td>Kodi library windows</td></tr>
@@ -102,24 +102,33 @@ blobs. The ones the addon writes:</p>
 </tbody>
 </table>
 
-<div class="callout warn"><span class="callout-title">c18 vs files.strFilename</span>
-<p>Both <code>episode.c18</code> and <code>files.strFilename</code> hold
-URL-like strings — but they're <em>different shapes</em>:</p>
+<div class="callout warn"><span class="callout-title">c18 vs files.strFilename — the addon's different from Kodi's scanner</span>
+<p>For Kodi's own disk-source rows (e.g. an Optima HTTP source), the two
+columns hold <em>different shapes</em>:</p>
 <ul>
 <li><code>episode.c18</code> holds the full
-<code>plugin://plugin.video.easyplaytv/?action=resolve_vod&…</code> URL.
-Kodi's player reads this for play.</li>
-<li><code>files.strFilename</code> holds the <em>query-string only</em>
-(<code>?action=resolve_vod&…</code>) for episode rows. This is what
-the addon uses as the dedup key when reconciling DB contents against
-the live provider catalogues.</li>
+<code>http://kodi:kodi@optima:80/Videos/Master/Series/24/Season 1/S01E01 - 12AM-1AM.mkv</code>
+URL — what Kodi's player reads for play.</li>
+<li><code>files.strFilename</code> holds just the bare basename
+(<code>S01E01 - 12AM-1AM.mkv</code>) — what Kodi's library window
+displays as the filename column.</li>
 </ul>
-<p>The reason for the mismatch: Kodi uses <code>strFilename</code> as the
-<em>display</em> filename (so it's pretty short), so the path-stripped
-query-string is what visually appears. The actual playback URL is in
-<code>episode.c18</code>. Movies have the equivalent separation:
-<code>movie.c22</code> holds the full URL; <code>files.strFilename</code>
-holds the query-string.</p>
+<p>For EasyPlayTV's plugin-source rows, the addon writes the
+<em>same full URL</em> into both columns:</p>
+<ul>
+<li><code>episode.c18</code> =
+<code>plugin://plugin.video.easyplaytv/?action=resolve_vod&provider=bbc&episode_id=…</code></li>
+<li><code>files.strFilename</code> = the same full plugin URL.</li>
+</ul>
+<p>There's no truncation in the addon's
+<a href="../files/library_sync-py.html"><code>_insert_episode</code></a>:
+the code at line 1136 simply aliases <code>plugin_filename = strm_url</code>
+and inserts that string into both <code>files.strFilename</code> and
+<code>episode.c18</code>. If a skin falls back to the filename column for
+an episode row whose <code>c00</code> (title) is empty, the raw
+<code>plugin://...?action=resolve_vod&...</code> URL will leak through into
+the display. Movies have the same shape: <code>movie.c22</code> =
+<code>files.strFilename</code> = full plugin URL.</p>
 </div>
 
 <h2>The <code>videoversion</code> table (Kodi 21 addition)</h2>

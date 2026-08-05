@@ -307,27 +307,51 @@ be fetched by Kodi, even though our own sync inserts episodes directly
 <code>uniqueid</code> (tmdb + imdb + tvdb), <code>genre_link</code>, and
 <code>art</code> (poster + fanart).</li>
 </ul>
+
+<div class="callout note"><span class="callout-title">c10 wrapper tags — why we emit <code><episodeguide></code></span>
+<p>Kodi's own <code>VideoInfoScanner</code> writes c10 in the wrapped
+form <code><episodeguide>{"tmdb":"…"}</episodeguide></code>,
+and Kodi's scraper code accepts both bare JSON and the wrapped form. We
+emit the wrapped form so addon-inserted rows have the same shape as
+Kodi-scraped rows when both coexist in the library — e.g. an Optima
+disk-source row next to a BBC plugin-source row in the same Kodi view.</p>
+<p>Pre-existing bare-JSON rows written by older addon builds (about 6,000
+on the production box) are <em>not</em> rewritten on sync — Kodi still
+reads them fine, so they're left untouched. Only freshly-inserted shows
+pick up the wrapped form.</p>
+</div>
 </div>
 
 <div class="fn">
-<span class="fn-sig">_insert_episode(db, show_id, season_id, season_num, ep_num, ep_data, strm_path, strm_filename, show_name="") · line 1112</span>
+<span class="fn-sig">_insert_episode(db, show_id, season_id, season_num, ep_num, ep_data, strm_path, strm_filename, show_name="") · line 1118</span>
 <p>Inserts a single episode. Idempotency check at line 1114 by
 <code>(idShow, c12=season, c13=episode)</code> triple. Builds
 <code>ep_c00</code> as <code>"Show Name - Episode Title"</code> when
 different, just like Kodi's own scraper does. Inserts into
-<code>files</code> (with the <em>plugin URL's query string</em> as
-<code>strFilename</code>), <code>episode</code>,
+<code>files</code> (with the <em>full plugin URL</em> as
+<code>strFilename</code> — see below), <code>episode</code>,
 <code>uniqueid</code> (tmdb episode id), <code>art</code> (still thumbnail).</p>
 
-<div class="callout warn"><span class="callout-title">strFilename is the query-string only</span>
-<p>For every row the <code>files.strFilename</code> is set to
-<code>"?" + parsed.query</code> from the plugin URL — so the Kodi library
-window displays <code>?action=resolve_vod&provider=…&episode_id=…</code>,
-not the full <code>plugin://plugin.video.easyplaytv/?…</code>. The full
-URL lives in <code>episode.c18</code> (the column Kodi uses for playback)
-and in <code>movie.c22</code> for movies. The mismatch is deliberate:
-Kodi uses <code>files.strFilename</code> for matching and display in the
-library window, but <code>c18</code> / <code>c22</code> for play.</p>
+<div class="callout warn"><span class="callout-title">strFilename holds the full plugin URL — same string as episode.c18</span>
+<p>For every row the addon writes,
+<code>files.strFilename</code> is set to the <em>full</em>
+<code>plugin://plugin.video.easyplaytv/?action=resolve_vod&provider=…&episode_id=…</code>
+URL — the same string that goes into <code>episode.c18</code>.
+There's no <code>?</code>-only truncation; the addon's
+<code>_insert_episode</code> at line 1136 simply aliases
+<code>plugin_filename = strm_url</code> and inserts that into both
+columns. This differs from how Kodi's own scanner populates disk-based
+rows, where <code>strFilename</code> is the bare basename (e.g.
+<code>S01E01 - 12AM-1AM.mkv</code>) and <code>c18</code> is the full
+<code>http://…/Season 1/S01E01 - 12AM-1AM.mkv</code>.</p>
+<p>Practical consequence: when Kodi's library window renders an
+EasyPlayTV episode row, the filename column shows the raw
+<code>plugin://...?action=resolve_vod&...</code> URL rather than a
+pretty basename. The skin's <code>ListItem.Label</code> falls back to
+<code>episode.c00</code> (the display title) so the user sees
+<em>"Doctor Who - Into the Dalek"</em> in the title column, not the
+URL — but if a skin falls back to the filename for an empty-title row,
+the URL will leak through.</p>
 </div>
 </div>
 
