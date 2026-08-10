@@ -52,7 +52,7 @@ const NAV_GROUPS = [
       { href: "files/stv_vod-py.html",   label: "stv_vod.py",   tags: "stv episodes" },
       { href: "files/blaze_vod-py.html", label: "blaze_vod.py", tags: "blaze episodes html scrap" },
       { href: "files/c4-py.html",        label: "c4.py (resolve_vod)", tags: "channel4 resolve widevine licence" },
-      { href: "files/my5-py.html",       label: "my5.py",        tags: "cassie hmac aes keys" },
+      { href: "files/my5-py.html",       label: "my5.py",        tags: "cassie hmac aes keys cognito login bearer aws" },
     ],
   },
 ];

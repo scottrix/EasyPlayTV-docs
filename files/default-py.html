@@ -17,7 +17,7 @@
 
 <div class="file-meta">
 <span><strong>Path</strong> <code>/default.py</code></span>
-<span><strong>Lines</strong> 335</span>
+<span><strong>Lines</strong> 341</span>
 <span><strong>Type</strong> python.pluginsource (Kodi-invoked)</span>
 <span><strong>Stateless?</strong> yes — re-imported per call</span>
 <span><strong>← invoked by</strong> Kodi (one fresh interpreter per call)</span>
@@ -177,7 +177,7 @@ keys are used:</p>
 <table>
 <thead><tr><th>Key</th><th>Purpose</th><th>Examples</th></tr></thead>
 <tbody>
-<tr><td><code>action=</code></td><td>One-shot verbs — resolve-and-play, sync, login, maintenance helpers</td><td><code>resolve</code>, <code>resolve_vod</code>, <code>itvx_login</code>, <code>sync</code>, <code>backfill_art</code>, <code>prefix_titles</code></td></tr>
+<tr><td><code>action=</code></td><td>One-shot verbs — resolve-and-play, sync, login, maintenance helpers</td><td><code>resolve</code>, <code>resolve_vod</code>, <code>itvx_login</code>, <code>my5_login</code>, <code>sync</code>, <code>backfill_art</code>, <code>prefix_titles</code></td></tr>
 <tr><td><code>mode=</code></td><td>Directory listings — Kodi opens a folder</td><td><code>live_tv</code></td></tr>
 </tbody>
 </table>
@@ -188,6 +188,7 @@ keys are used:</p>
 <tbody>
 <tr><td><code>action=sync&provider=<p></code></td><td>Kicks a sync — see below for blocking vs daemon</td></tr>
 <tr><td><code>action=itvx_login</code> · <code>itvx_logout</code></td><td>Triggers ITVX OAuth — see <a href="itvx-py.html"><code>itvx.login()</code></a></td></tr>
+<tr><td><code>action=my5_login</code> · <code>my5_logout</code></td><td>Triggers My5 / Channel5 user sign-in via AWS Cognito — see <a href="my5-py.html#cognito-auth"><code>my5.login()</code></a>. The settings UI exposes these as buttons (the addon's settings.xml uses <code>RunPlugin(plugin://plugin.video.easyplaytv/?action=my5_login)</code> as the button action). Credentials are read from <code>my5_email</code> / <code>my5_password</code> in settings.</td></tr>
 <tr><td><code>action=backfill_art</code></td><td><a href="library_sync-py.html"><code>library_sync.backfill_series_art()</code></a> — refresh missing posters/fanart</td></tr>
 <tr><td><code>action=prefix_titles</code></td><td><a href="library_sync-py.html"><code>prefix_existing_movies()</code></a> + <code>prefix_existing_tvshows()</code> + <code>fix_sort_titles()</code> — maintenance helper to retrofit the <code>[PROVIDER]</code> prefix onto rows pre-dating the convention</td></tr>
 </tbody>

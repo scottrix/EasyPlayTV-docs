@@ -17,7 +17,7 @@
 
 <div class="file-meta">
 <span><strong>Path</strong> <code>/resources/lib/library_sync.py</code></span>
-<span><strong>Lines</strong> 1,789</span>
+<span><strong>Lines</strong> 1,799</span>
 <span><strong>Type</strong> sync engine (called by service.py + default.py)</span>
 <span><strong>← called by</strong> <a href="service-py.html">service.py</a>, <a href="default-py.html">default.py</a> (manual sync, backfill_art, prefix_titles)</span>
 <span><strong>→ calls</strong> pymysql, TMDb HTTP, all <code>*_vod.py</code> providers, <a href="strm-py.html">strm.py</a></span>
@@ -337,10 +337,17 @@ different, just like Kodi's own scraper does. Inserts into
 <code>files.strFilename</code> is set to the <em>full</em>
 <code>plugin://plugin.video.easyplaytv/?action=resolve_vod&provider=…&episode_id=…</code>
 URL — the same string that goes into <code>episode.c18</code>.
-There's no <code>?</code>-only truncation; the addon's
-<code>_insert_episode</code> at line 1136 simply aliases
-<code>plugin_filename = strm_url</code> and inserts that into both
-columns. This differs from how Kodi's own scanner populates disk-based
+There's no <code>?</code>-only truncation. The
+<code>_insert_episode</code> function picks
+<code>plugin_filename = strm_url</code> when <code>strm_url</code>
+starts with <code>plugin://</code> (the normal path — the
+<a href="strm-py.html">strm.py</a> URL builders always emit full
+<code>plugin://plugin.video.easyplaytv/…</code> URLs), and only falls
+back to a placeholder <code>plugin://plugin.video.easyplaytv/?action=resolve_vod&provider=unknown&episode_id=0</code>
+when a non-<code>plugin://</code> value somehow reaches it
+(<code>xbmc.LOGWARNING</code> emitted in that case). The same
+defensive shape exists in <code>_insert_movie</code> for symmetry.
+This differs from how Kodi's own scanner populates disk-based
 rows, where <code>strFilename</code> is the bare basename (e.g.
 <code>S01E01 - 12AM-1AM.mkv</code>) and <code>c18</code> is the full
 <code>http://…/Season 1/S01E01 - 12AM-1AM.mkv</code>.</p>
@@ -356,7 +363,7 @@ the URL will leak through.</p>
 </div>
 
 <div class="fn">
-<span class="fn-sig">_ensure_season(db, show_id, season_num, poster_path=None) · line 1184</span>
+<span class="fn-sig">_ensure_season(db, show_id, season_num, poster_path=None) · line 1190</span>
 <p>Gets-or-creates a <code>seasons</code> row. Inserts poster art if TMDb
 returned a season poster.</p>
 </div>
@@ -461,7 +468,7 @@ TMDb scraper runs across unrelated sources on every 6h sync.</li>
 <h2>Startup path reconciliation</h2>
 
 <div class="fn">
-<span class="fn-sig">_repair_scraper_path_settings(db=None) · line 1596</span>
+<span class="fn-sig">_repair_scraper_path_settings(db=None) · line 1602</span>
 <p>One-time repair that re-quotes the unquoted XML in scraper path rows and
 pins <code>verboselog=false</code>. Wraps <code>_sanitize_scraper_settings_xml</code>
 at the SQL level. Idempotent.</p>

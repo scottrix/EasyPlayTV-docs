@@ -165,6 +165,41 @@ because the API directly accepts password grant for the
 </div>
 
 <div class="callout warn">
+<span class="callout-title">My5 premium content: 401 / 403 Bearer rejected on every playback</span>
+<p><strong>Cause:</strong> the saved Cognito session in
+<code>addon_data/plugin.video.easyplaytv/my5_session</code> has expired
+and the refresh token can no longer renew the access token (Cognito
+refresh tokens stay valid until revoked by GlobalSignOut, but server-side
+session invalidation can still revoke them — e.g. if you sign out via
+the My5 website).</p>
+<p><strong>Fix:</strong> open the addon's settings → Channel5 section →
+sign out, then sign in again. The addon calls
+<a href="../files/my5-py.html#cognito-auth">my5.login</a> which
+<code>InitiateAuth(USER_PASSWORD_AUTH)</code>'s against AWS Cognito
+directly and persists a fresh session dict (containing a new
+<code>refresh_token</code>) to <code>my5_session</code>. Note that
+free-to-air content will keep playing in the meantime — the
+<a href="../files/my5-py.html#fetch-cassie">_fetch_cassie</a> retry
+logic drops the <code>Authorization: Bearer</code> header on 401/403 and
+re-issues the request anonymously.</p>
+</div>
+
+<div class="callout warn">
+<span class="callout-title">My5 account challenge not supported: "SOFTWARE_TOKEN_MFA" / "NEW_PASSWORD_REQUIRED" / etc.</span>
+<p><strong>Cause:</strong> the Cognito <code>InitiateAuth</code> response
+came back with a <code>ChallengeName</code> instead of an
+<code>AuthenticationResult</code>. My5's hosted-UI web flow handles
+these (MFA, new-device, SRP, password-reset) but the addon's direct
+<code>USER_PASSWORD_AUTH</code> path does not.</p>
+<p><strong>Fix:</strong> sign in to channel5.com in a browser first and
+complete the challenge there. Once the account is in a state Cognito
+accepts for direct <code>USER_PASSWORD_AUTH</code> (typically: MFA
+disabled, password confirmed), the addon's
+<code>?action=my5_login</code> will succeed and persist the session
+locally.</p>
+</div>
+
+<div class="callout warn">
 <span class="callout-title">Sky News playback: "this content is not available in your region"</span>
 <p><strong>Cause:</strong> Brightcove's policy key rotation can ignore the
 <code>X-Forwarded-For: 2.97.0.0</code> header
@@ -222,6 +257,34 @@ from <code>_repair_scraper_path_settings</code> on every
 <code>migrate_to_plugin_paths</code> run. If you see verbose log spam
 after a Kodi upgrade, run <code>?action=sync</code> manually to re-fire
 the repair.</p>
+</div>
+
+<div class="callout danger">
+<span class="callout-title">Kodi crashes 3× in 5 minutes after reboot on Pi 4 / Pi 3 ("mmap of bo N failed", "[drm] Resetting GPU")</span>
+<p><strong>Cause:</strong> GPU/CMA memory exhaustion. Kodi's library
+scanner fires ffmpeg probes for every entry in the video DB on boot —
+with <code>myvideos.extractflags</code> and
+<code>myvideos.extractchapterthumbs</code> set to <code>true</code>
+(Kodi's defaults), each probe allocates a V4L2 decoder context + scratch
+frames. With a few hundred large <code>.mkv</code> files this exhausts
+the 256&nbsp;MiB CMA pool on the Pi in a few seconds. The kernel driver
+fails the <code>mmap</code>, the GPU is reset, and Kodi's mediacenter
+service restarts — only to repeat the cycle on the next boot's scan.</p>
+<p>Symptoms: <code>journalctl -u mediacenter</code> shows repeated
+<code>mmap of bo N (offset …, size …) failed</code> entries;
+<code>dmesg</code> shows <code>[drm] Resetting GPU.</code>;
+<code>kodi.log</code> is filled with <code>LoadFile: Failed to load ….mkv:
+out of memory</code> lines.</p>
+<p><strong>Fix:</strong> turn off the ffmpeg-probe settings in
+<code>guisettings.xml</code>:</p>
+<pre><code><setting id="myvideos.extractflags">false</setting>
+<setting id="myvideos.extractchapterthumbs">false</setting></code></pre>
+<p>…then restart <code>mediacenter.service</code>. The EasyPlayTV sync
+already writes its own poster/art rows directly via SQL, so Kodi's
+ffmpeg-probe is not needed for the addon's library entries. Only the
+disk-based <code>.mkv</code> library (for non-addon content you also
+host locally) loses auto-generated thumbnails — a small price to pay for
+a stable boot.</p>
 </div>
 
 <h2>Manual syncs / external triggers</h2>

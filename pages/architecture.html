@@ -128,9 +128,10 @@ and a targeted <code>UpdateLibrary(video, ...)</code> so Kodi's window refreshes
 <tr><td><code>series_sync_state.json</code></td><td>library_sync.py</td><td>library_sync.py</td><td>Series sync state — skips shows already synced in the last 6h window (avoid hammering TMDb).</td></tr>
 <tr><td><code>stale_titles.json</code></td><td>catalog_check.py</td><td>default.py</td><td>Titles marked stale on a playback 404 (per-title marker so the user knows which episodes have gone away) — written by <code>default.py:_resolve_vod</code>'s 404 handler, read on each resolve to suppress retries.</td></tr>
 <tr><td><code>itv_session</code></td><td>itvx.py</td><td>itvx.py</td><td>OAuth access + refresh tokens for ITVX (required for VOD playback of any ITV channel content).</td></tr>
+<tr><td><code>my5_session</code></td><td>my5.py</td><td>my5.py</td><td>JSON dict holding the AWS Cognito <code>{access_token, id_token, refresh_token, expires_at, email}</code> for optional Channel5 user sign-in. Attached as <code>Authorization: Bearer …</code> on Cassie requests when present. Free-to-air content plays anonymously when absent or expired.</td></tr>
 <tr><td><code>itvx_cookies.pkl</code></td><td>itvx_vod.py</td><td>itvx_vod.py</td><td>Pickled <code>http.cookiejar</code> for the itvx.com catalog fetches (compiled by the scraper behind the scenes).</td></tr>
 <tr><td><code>stv_cache/</code></td><td>stv_vod.py</td><td>stv_vod.py</td><td>Per-show JSON responses cached to avoid re-downloading 535 catalog pages every sync.</td></tr>
-<tr><td><code>settings.xml</code></td><td>Kodi settings UI</td><td>all via <code>_ADDON.getSetting*</code></td><td>db_source (0=master/1=follower), max_resolution, itvx_email/password, has_tv_license.</td></tr>
+<tr><td><code>settings.xml</code></td><td>Kodi settings UI</td><td>all via <code>_ADDON.getSetting*</code></td><td>db_source (0=master/1=follower), max_resolution, itvx_email/password, my5_email/password, has_tv_license.</td></tr>
 </tbody>
 </table>
 
@@ -185,7 +186,7 @@ DB is the addon's sync engine; the scanner is bypassed entirely.</p>
 <tbody>
 <tr><td>BBC iPlayer</td><td>HTML scrape (<code>__IPLAYER_REDUX_STATE__</code>)</td><td>MediaSelector 6 JSON</td><td>None (UK-IP geofenced)</td><td>None (clear DASH)</td></tr>
 <tr><td>ITVX</td><td>HTML scrape (Next.js <code>__NEXT_DATA__</code>)</td><td>magni playlist POST</td><td>OAuth (JWT in <code>itv_session</code>)</td><td>Widevine L3</td></tr>
-<tr><td>My5</td><td>corona.channel5.com JSON API</td><td>cassie.channel5.com JSON API</td><td>HMAC + AES, both keys XOR-extracted from live player JS</td><td>Widevine</td></tr>
+<tr><td>My5</td><td>corona.channel5.com JSON API</td><td>cassie.channel5.com JSON API</td><td>HMAC + AES, both keys XOR-extracted from live player JS; optional AWS Cognito Bearer attached when user signed in (see <a href="../files/my5-py.html#cognito-auth">my5.cognito</a>)</td><td>Widevine</td></tr>
 <tr><td>Channel 4</td><td>HTML scrape (<code>__PARAMS__</code> inline JSON)</td><td><code>/vod/stream/<id></code> JSON</td><td>AES-CBC encrypted token (keys hardcoded per client)</td><td>Widevine via Redbeemedia</td></tr>
 <tr><td>STV</td><td>player.api.stv.tv JSON</td><td>Same</td><td><code>stv-drm: true</code> header</td><td>Widevine</td></tr>
 <tr><td>Blaze</td><td>watch.blaze.tv HTML scrape</td><td>Same HTML scrape (per-episode <code>data-key</code>)</td><td>None</td><td>None</td></tr>

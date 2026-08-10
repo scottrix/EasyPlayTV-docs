@@ -13,14 +13,14 @@
 <nav class="sidebar"></nav>
 <main id="main">
 <div class="crumbs"><a href="../index.html">Home</a> <span class="sep">/</span> Files <span class="sep">/</span> my5.py</div>
-<h1>resources/lib/my5.py <small>— My5 Cassie key extractor + resolver</small></h1>
+<h1>resources/lib/my5.py <small>— My5 Cognito auth + Cassie key extractor + resolver</small></h1>
 
 <div class="file-meta">
 <span><strong>Path</strong> <code>/resources/lib/my5.py</code></span>
-<span><strong>Lines</strong> 249</span>
-<span><strong>Type</strong> playback resolver (DASH + Widevine)</span>
-<span><strong>← called by</strong> <a href="default-py.html">default.py:_resolve_vod</a>, <a href="default-py.html">default.py:_resolve_channel</a></span>
-<span><strong>→ calls</strong> PyCryptodome (AES + HMAC), Cassie JSON API, <a href="init-py.html">setup_dash_item</a></span>
+<span><strong>Lines</strong> 480</span>
+<span><strong>Type</strong> playback resolver (DASH + Widevine) + user-auth helper</span>
+<span><strong>← called by</strong> <a href="default-py.html">default.py:_resolve_vod</a>, <a href="default-py.html">default.py:_resolve_channel</a>, <code>?action=my5_login</code> / <code>?action=my5_logout</code></span>
+<span><strong>→ calls</strong> PyCryptodome (AES + HMAC), AWS Cognito IDP, Cassie JSON API, <a href="init-py.html">setup_dash_item</a></span>
 </div>
 
 <h2>Role</h2>
@@ -32,23 +32,49 @@ AES-CBC-encrypted — and both keys are XOR-obfuscated inside
 caches them in memory, and re-extracts if a 403 "Failed to authenticate
 HMAC" comes back (which happens when C5 rotates the keys, approximately
 weekly).</p>
+<p>The module is also responsible for optional Channel5 user sign-in via
+AWS Cognito (the My5 web app's auth backend). When a session is active,
+the access token is attached to Cassie requests as
+<code>Authorization: Bearer …</code> so premium content unlocks. Free
+content continues to play anonymously — see
+<a href="#cognito-auth">the auth section below</a>.</p>
 
 <h2>Constants</h2>
 <div class="fn">
-<span class="fn-sig">CASSIE_BASE_VOD/LIVE_URL = https://cassie.channel5.com/api/v2/{media|live_media} · CASSIE_PLATFORM_ID = "my5desktopng" · lines 12-14</span>
+<span class="fn-sig">CASSIE_BASE_VOD/LIVE_URL = https://cassie.channel5.com/api/v2/{media|live_media} · CASSIE_PLATFORM_ID = "my5desktopng" · lines 16-18</span>
 <p>Cassie API roots. The desktop platform ID is what the C5 web player
 sends — important because the keys are bound to this platform. Changing
 the platform ID without re-extracting keys would 403.</p>
 </div>
 
 <div class="fn">
-<span class="fn-sig">PLAYER_JS_URL = "https://player.akamaized.net/html5player/core/html5-c5-player.js" · line 22</span>
+<span class="fn-sig">COGNITO_CLIENT_ID = "10ap8l6jp0vhreaac79c3qr1lq" · COGNITO_REGION = "eu-west-2" · COGNITO_IDP_URL = "https://cognito-idp.eu-west-2.amazonaws.com/" · lines 28-30</span>
+<p>AWS Cognito user-pool client ID and IDP endpoint. Same client_id the
+My5 web app uses for its hosted-UI OAuth implicit flow; the addon calls
+<code>InitiateAuth</code> with <code>USER_PASSWORD_AUTH</code> directly,
+which Cognito also accepts for this client. Config source is
+<code>https://cassie.channel5.com/platform/my5desktopng/config.json</code>
+→ <code>userServiceSettings.userServiceSdkConfig.apiUrl</code>
+(hosted at <code>userservice-api.channel5.com</code> for user-profile
+calls; the addon skips that and only talks to the IDP endpoint).</p>
+</div>
+
+<div class="fn">
+<span class="fn-sig">SESSION_DIR = addon profile dir · SESSION_FILE = "$SESSION_DIR/my5_session" · lines 32-33</span>
+<p>Where the Cognito session dict
+(<code>{access_token, id_token, refresh_token, expires_at, email}</code>)
+is persisted as JSON. Sibling to <code>itv_session</code> used by
+<a href="itvx-py.html">itvx.py</a>.</p>
+</div>
+
+<div class="fn">
+<span class="fn-sig">PLAYER_JS_URL = "https://player.akamaized.net/html5player/core/html5-c5-player.js" · line 41</span>
 <p>The Akamai-hosted player script that holds the obfuscated key blob.
 This is the file we fetch on every fresh-key extraction.</p>
 </div>
 
 <div class="fn">
-<span class="fn-sig">_cassie_keys = {"hmac_b64": None, "aes_b64": None} · line 24</span>
+<span class="fn-sig">_cassie_keys = {"hmac_b64": None, "aes_b64": None} · line 43</span>
 <p>Module-level cache. Lives for the addon's Python interpreter lifetime
 (which is short-lived in the plugin case — every directory-listing action
 spawns a new interpreter — but long-lived for the service), then
@@ -57,21 +83,108 @@ re-extracted on next call.</p>
 
 <h2>Crypto primitives</h2>
 <div class="fn">
-<span class="fn-sig">_b64url_encode/_b64url_decode · lines 36, 40</span>
+<span class="fn-sig">_b64url_encode/_b64url_decode · lines 55, 59</span>
 <p>URL-safe base64 (<code>+</code> → <code>-</code>, <code>/</code> → <code>_</code>,
 strips padding on encode, re-pads on decode). Cassie uses URL-safe base64
 for signatures and IVs.</p>
 </div>
 
 <div class="fn">
-<span class="fn-sig">try: from Crypto.Cipher import AES ... except ImportError: from Cryptodome.Cipher import AES · lines 28-33</span>
+<span class="fn-sig">try: from Crypto.Cipher import AES ... except ImportError: from Cryptodome.Cipher import AES · lines 47-52</span>
 <p>Two import paths — <code>pycrypto</code> (legacy) or <code>pycryptodomex</code>
 (newer). Whatever's installed. Kodi on OSMC ships PyCryptodome.</p>
 </div>
 
+<h2 id="cognito-auth">AWS Cognito user authentication</h2>
+<p>My5's web app authenticates users via AWS Cognito (user pool
+<code>my5userpool</code> in <code>eu-west-2</code>). The browser flow is
+hosted-UI OAuth implicit — the resulting <code>localStorage.My5_SessionId</code>
+is the Cognito access_token. Channel5's corona/cassie clients attach it
+as <code>Authorization: Bearer <token></code> on requests that need
+a signed-in user. The addon mirrors this by calling Cognito's
+<code>InitiateAuth</code> (<code>USER_PASSWORD_AUTH</code> flow) directly
+with the same client_id the website uses, saving the access token to
+<code>my5_session</code>.</p>
+
+<div class="fn">
+<span class="fn-sig">_load_session() / _save_session(session) / _clear_session() · lines 127, 136, 146</span>
+<p>JSON-backed load / save / wipe of the session dict at
+<code>SESSION_FILE</code>. <code>_save_session</code> lazily
+<code>os.makedirs(SESSION_DIR)</code> so a fresh addon profile dir works
+without a preflight. All three swallow IOError and return <code>{}</code>
+/ log + continue — never raise.</p>
+</div>
+
+<div class="fn">
+<span class="fn-sig">_cognito_call(amz_target, body_dict) → dict · line 154</span>
+<p>POST a JSON body to the Cognito IDP endpoint with the
+<code>X-Amz-Target: <service>.<method></code> header. Returns
+the parsed JSON response. On HTTP error, reads the AWS error body and
+raises <code>Exception("My5: Cognito <method> failed: <msg>")</code>
+so callers can pattern-match on substring ("Incorrect", "NotAuthorized")
+to produce user-friendly Kodi notifications.</p>
+</div>
+
+<div class="fn">
+<span class="fn-sig">login(email=None, password=None) → bool · line 176</span>
+<p>Wired to <code>?action=my5_login</code> (settings UI button — see
+<a href="default-py.html">default.py's dispatch table</a>). Reads
+credentials from the addon's <code>my5_email</code>/<code>my5_password</code>
+settings if not passed as args. Calls Cognito
+<code>InitiateAuth(USER_PASSWORD_AUTH)</code>, lower-cases the email
+(Cognito is case-sensitive on the sub). On success persists
+<code>{access_token, id_token, refresh_token, expires_at, email}</code>
+to <code>my5_session</code> and pops a success notification.</p>
+<p>Failure modes are individually surfaced: missing creds (warning),
+<code>Incorrect/NotAuthorized</code> (invalid-credentials error), MFA /
+new-device / SRP / password-reset challenge (not-supported error pointing
+the user at channel5.com to complete the challenge, after which direct
+<code>USER_PASSWORD_AUTH</code> will work), or no AccessToken in the
+response (unexpected-response error). Never raises.</p>
+</div>
+
+<div class="fn">
+<span class="fn-sig">logout() · line 241</span>
+<p>Wired to <code>?action=my5_logout</code>. Best-effort
+<code>GlobalSignOut</code> against Cognito using the saved access_token
+(network error / expired token / already-revoked are fine — logged at
+LOGDEBUG and ignored), then unconditionally removes
+<code>my5_session</code> locally so the user appears signed out.</p>
+</div>
+
+<div class="fn">
+<span class="fn-sig">_refresh_session() → str · line 261</span>
+<p>Uses the saved <code>refresh_token</code> to call
+<code>InitiateAuth(REFRESH_TOKEN_AUTH)</code> and get a new access token.
+Updates <code>expires_at</code> on the session dict and persists it.
+Cognito's refresh response sometimes omits a new <code>RefreshToken</code>;
+the old one is kept (reusable until revoked by GlobalSignOut). On any
+failure the local session is cleared so <code>_get_access_token</code>
+next call returns <code>""</code> (caller will see anonymous).</p>
+</div>
+
+<div class="fn">
+<span class="fn-sig">_get_access_token() → str · line 296</span>
+<p>Top-level accessor. Returns the cached access token if it has > 60 s
+of life left, otherwise calls <code>_refresh_session()</code> to renew.
+Returns <code>""</code> when no session exists (user not signed in) or
+refresh failed — i.e. always returns a string, never raises.</p>
+</div>
+
+<div class="callout note"><span class="callout-title">Why we attach Bearer then fall back anonymous</span>
+<p>Cassie's free-to-air content doesn't require auth, but some premium
+content returns 401/403 to an anonymous request. The strategy in
+<a href="#fetch-cassie"><code>_fetch_cassie</code> below</a> is:
+if a Cognito session exists, attempt the request with
+<code>Authorization: Bearer <access_token></code>; if that gets
+401 or a non-HMAC 403, retry without the header. Free-to-air content
+keeps playing even when the saved session has expired and refresh has
+failed.</p>
+</div>
+
 <h2>The key heist — _extract_cassie_keys</h2>
 <div class="fn">
-<span class="fn-sig">_extract_cassie_keys() → (aes_b64, hmac_b64) · line 46</span>
+<span class="fn-sig">_extract_cassie_keys() → (aes_b64, hmac_b64) · line 65</span>
 <p>This is the wild part. Steps:</p>
 <ol>
 <li>Fetch the live C5 player JS from <code>PLAYER_JS_URL</code>.</li>
@@ -87,11 +200,11 @@ this unwraps the obfuscation.</li>
 + 1 or 2 <code>=</code> padding characters) that decode to <em>exactly</em>
 16 bytes.</li>
 <li>Take keys[1] as AES, keys[0] as HMAC (verified empirically — comment at
-line 89).</li>
+line 108).</li>
 </ol>
 
 <div class="callout danger"><span class="callout-title">Key extraction regex MUST require ≥1 <code>=</code> pad</span>
-<p>The regex at line 78 —
+<p>The regex at line 97 —
 <code>r'(?<![A-Za-z0-9+/])([A-Za-z0-9+/]{22}={1,2})(?![A-Za-z0-9+/])'</code> —
 <em>requires</em> at least one <code>=</code> pad character. Why:</p>
 <ul>
@@ -110,7 +223,7 @@ we don't match a substring of a longer base64 blob.</p>
 </div>
 
 <div class="callout warn"><span class="callout-title">Re-pad before <code>base64.b64decode()</code></span>
-<p>Line 82: <code>c_padded = c + "=" * ((4 - len(c) % 4) % 4)</code>.
+<p>Line 101: <code>c_padded = c + "=" * ((4 - len(c) % 4) % 4)</code>.
 <code>base64.b64decode</code> silently accepts misaligned 22-char strings
 and returns 16 bytes if they happen to align — but the alignment is
 unpredictable. Always re-pad to a multiple of 4 before decoding.</p>
@@ -118,14 +231,14 @@ unpredictable. Always re-pad to a multiple of 4 before decoding.</p>
 </div>
 
 <div class="fn">
-<span class="fn-sig">_get_cassie_keys(force_refresh=False) → (aes_b64, hmac_b64) · line 93</span>
+<span class="fn-sig">_get_cassie_keys(force_refresh=False) → (aes_b64, hmac_b64) · line 112</span>
 <p>Cached accessor. Extracts fresh if <code>force_refresh=True</code> or
 the cache is empty. Always returns in the order (AES, HMAC).</p>
 </div>
 
 <h2>URL signing + decryption</h2>
 <div class="fn">
-<span class="fn-sig">_build_cassie_url(content_id, is_live=False, timestamp=None, hmac_key_b64=None) → str · line 104</span>
+<span class="fn-sig">_build_cassie_url(content_id, is_live=False, timestamp=None, hmac_key_b64=None) → str · line 314</span>
 <p>Constructs the signed Cassie URL:</p>
 <ol>
 <li>Path = <code>CASSIE_BASE_{VOD|LIVE}_URL/<CASSIE_PLATFORM_ID>/<content_id>.json</code>.</li>
@@ -138,23 +251,35 @@ the cache is empty. Always returns in the order (AES, HMAC).</p>
 </div>
 
 <div class="fn">
-<span class="fn-sig">_fetch_cassie(content_id, is_live=False) → dict · line 117</span>
-<p>Performs the signed fetch. On HTTP 403 with body
-<em>"Failed to authenticate HMAC"</em>: re-extract keys
-(<code>_get_cassie_keys(force_refresh=True)</code>), rebuild URL, retry
-once. Any other HTTP error or a non-HMAC 403 re-raises.</p>
-<p>The successful response is JSON with <code>iv</code> + <code>data</code>
-fields, both URL-safe base64 — passed to <code>_decrypt_cassie()</code>.</p>
+<span class="fn-sig" id="fetch-cassie">_fetch_cassie(content_id, is_live=False) → dict · line 327</span>
+<p>Performs the signed fetch in two stages:</p>
+<ol>
+<li>Call <code>_get_access_token()</code> from the
+<a href="#cognito-auth">Cognito auth section</a>. If a non-empty token
+comes back, attempt the request with
+<code>Authorization: Bearer <access_token></code>. This unlocks
+premium / signed-in-only content.</li>
+<li>If the Bearer attempt gets a 401 or a non-HMAC 403 (token rejected /
+expired), retry the request <em>without</em> the header so free-to-air
+content keeps playing even when the saved session has gone stale.</li>
+</ol>
+<p>The recursive helper <code>_attempt(extra_headers)</code> handles
+HMAC-key rotation transparently: on a 403 with body
+<em>"Failed to authenticate HMAC"</em> it re-extracts keys
+(<code>_get_cassie_keys(force_refresh=True)</code>), rebuilds URL, retries
+once. Any other HTTP error or a non-HMAC 403 re-raises. The successful
+response is JSON with <code>iv</code> + <code>data</code> fields, both
+URL-safe base64 — passed to <code>_decrypt_cassie()</code>.</p>
 </div>
 
 <div class="fn">
-<span class="fn-sig">_decrypt_cassie(encrypted_response, aes_b64=None) → dict · line 146</span>
+<span class="fn-sig">_decrypt_cassie(encrypted_response, aes_b64=None) → dict · line 377</span>
 <p>AES-CBC decrypt with PKCS7 unpadding. Returns the parsed JSON dict that
 contains the stream manifest URL + license server URL.</p>
 </div>
 
 <div class="fn">
-<span class="fn-sig">_extract_stream(data) → (stream_url, keyserver) · line 157</span>
+<span class="fn-sig">_extract_stream(data) → (stream_url, keyserver) · line 388</span>
 <p>Iterates <code>data["assets"]</code>, picks the first one where
 <code>asset["drm"] == "widevine"</code>, takes its <code>keyserver</code>
 (license URL) and the first rendition's <code>url</code> (manifest URL).
@@ -164,7 +289,7 @@ available — purely-free content isn't supported by this resolver path.</p>
 
 <h2>Resolvers</h2>
 <div class="fn">
-<span class="fn-sig">resolve(item_id, listitem) · line 172 — for live</span>
+<span class="fn-sig">resolve(item_id, listitem) · line 403 — for live</span>
 <p>Called by <a href="default-py.html"><code>default.py:_resolve_channel</code></a>
 for the Channel 5 / 5 Star / 5 USA / 5 Action / 5 Select channels. Fetches
 Cassie in live mode, extracts the Widevine stream + keyserver, hands them
@@ -176,7 +301,7 @@ failure on a live channel doesn't crash the plugin.</p>
 </div>
 
 <div class="fn">
-<span class="fn-sig">_resolve_episode_guid(episode_f_name, show_f_name=None) → str · line 190</span>
+<span class="fn-sig">_resolve_episode_guid(episode_f_name, show_f_name=None) → str · line 421</span>
 <p>Helper used by resolve_vod when the caller knows the episode's
 <em>friendly name</em> (a slug) but Cassie needs the GUID (e.g.
 <code>C5XXXXXX</code>). Walks <code>my5_vod.list_seasons</code> +
@@ -185,7 +310,7 @@ falls back to corona's <code>episodes/next.json</code> endpoint.</p>
 </div>
 
 <div class="fn">
-<span class="fn-sig">resolve_vod(episode_id, listitem, standalone=False, f_name=None, show_f_name=None) · line 213</span>
+<span class="fn-sig">resolve_vod(episode_id, listitem, standalone=False, f_name=None, show_f_name=None) · line 444</span>
 <p>VOD playback. Three resolution paths:</p>
 <ul>
 <li>If <code>standalone=True</code>: call
@@ -202,7 +327,7 @@ to translate the show <code>f_name</code> into a single-episode GUID.</li>
 <h2>Notable details</h2>
 <ul>
 <li><code>stream_url = stream_url.replace("subtitles=off", "subtitles=on")</code>
-at lines 176 & 238 — C5's manifests ship with subtitles disabled by
+at lines 407 & 469 — C5's manifests ship with subtitles disabled by
 default for direct stream URLs; flipping the query param re-enables
 them before Kodi opens the manifest.</li>
 <li>License headers shape:
