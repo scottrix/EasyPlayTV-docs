@@ -2,16 +2,67 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<script>/* gcanonical-redirect */(function(){var p=location.pathname,q=location.search,h=location.hash,m=/^(.*)\/index\.html$/.exec(p);if(m){location.replace(m[1]+"/"+q+h);return}if(!p.endsWith("/")&&!/\.[a-z0-9]{1,10}$/i.test(p)){location.replace(p+".html"+q+h)}})();</script>
 <title>library_sync.py — EasyPlayTV docs</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="stylesheet" href="../assets/style.css">
 <script src="../assets/nav.js" defer></script>
+<meta name="description" content="Source code documentation for library_sync.py, part of the EasyPlayTV Kodi video add-on.">
+<meta name="author" content="Scott Rix">
+<meta name="robots" content="index, follow">
+<link rel="canonical" href="https://scottrix.github.io/EasyPlayTV-docs/files/library_sync-py.html">
+<meta property="og:title" content="library_sync.py — EasyPlayTV docs">
+<meta property="og:description" content="Source code documentation for library_sync.py, part of the EasyPlayTV Kodi video add-on.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://scottrix.github.io/EasyPlayTV-docs/files/library_sync-py.html">
+<meta property="og:site_name" content="EasyPlayTV docs">
+<meta property="og:locale" content="en_US">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="library_sync.py — EasyPlayTV docs">
+<meta name="twitter:description" content="Source code documentation for library_sync.py, part of the EasyPlayTV Kodi video add-on.">
 </head>
 <body data-page="library_sync-py">
 <a class="skip-link" href="#main">Skip to content</a>
+<header class="site-header">
+  <div class="header-content">
+    <a href="https://scottrix.github.io/EasyPlayTV-docs/" class="logo">&#127916; EasyPlayTV docs</a>
+    <nav class="nav">
+      <a href="https://scottrix.github.io/">Scottrix</a>
+      <a href="../index.html">Home</a>
+      <a href="../pages/installation.html">Installation</a>
+      <a href="../pages/troubleshooting.html">Troubleshooting</a>
+    </nav>
+    <div class="header-actions">
+      <button id="theme-toggle" class="theme-btn" title="Toggle theme">&#127769;</button>
+      <button id="mobile-menu-btn" class="mobile-menu-btn">&#9776;</button>
+    </div>
+  </div>
+</header>
+
+<div class="mobile-nav" id="mobile-nav">
+  <div class="mobile-nav-header">
+    <span class="logo">&#127916; EasyPlayTV docs</span>
+    <button id="close-mobile" class="close-btn">&#10005;</button>
+  </div>
+  <nav class="mobile-nav-links">
+    <a href="https://scottrix.github.io/">Scottrix</a>
+    <a href="../index.html">Home</a>
+    <a href="../pages/installation.html">Installation</a>
+    <a href="../pages/troubleshooting.html">Troubleshooting</a>
+  </nav>
+</div>
+<div class="overlay" id="overlay"></div>
+
 <div class="layout">
 <nav class="sidebar"></nav>
 <main id="main">
+
+<div class="disclaimer-banner"><strong>Disclaimer:</strong> This documentation is provided for convenience and may contain errors. Always verify information against the official Kodi and provider documentation. <a href="mailto:easyplaytv@scott.scottrix.co.uk">Report issues</a>.</div>
+
+<a class="fastmail-topbar" data-banner="fastmail" href="https://join.fastmail.com/0d63b2d52105" target="_blank" rel="noopener"><img src="../FM Billboard 970x250.png" alt="Fastmail" loading="lazy"></a>
+<a class="fastmail-topbar" data-banner="dynadot" href="https://www.dynadot.com/?ref=scottrix" target="_blank" rel="nofollow noopener" hidden><img src="../dynadot-banner.jpg" alt="Dynadot — register a new domain, web hosting, SSL" loading="lazy" onerror="this.parentElement.style.display='none';document.querySelector('[data-banner=fastmail]').hidden=false"></a>
+<script>(function(){var fm=document.querySelector('[data-banner=fastmail]');var dd=document.querySelector('[data-banner=dynadot]');if(Math.random()<0.5){fm.hidden=true;dd.hidden=false}})();</script>
+
 <div class="crumbs"><a href="../index.html">Home</a> <span class="sep">/</span> Files <span class="sep">/</span> library_sync.py</div>
 <h1>resources/lib/library_sync.py <small>— the sync engine</small></h1>
 
@@ -468,59 +519,34 @@ TMDb scraper runs across unrelated sources on every 6h sync.</li>
 <h2>Startup path reconciliation</h2>
 
 <div class="fn">
-<span class="fn-sig">_repair_scraper_path_settings(db=None) · line 1602</span>
-<p>One-time repair that re-quotes the unquoted XML in scraper path rows and
-pins <code>verboselog=false</code>. Wraps <code>_sanitize_scraper_settings_xml</code>
-at the SQL level. Idempotent.</p>
+<span class="fn-sig">_sanitize_scraper_settings_xml(xml) · line 155</span>
+<p>Normalizes TMDb scraper strSettings XML: quotes unquoted attributes and
+forces <code>verboselog=false</code>. Used during sync to prevent the TMDb
+scraper from dumping 20K+ log lines per API call.</p>
 </div>
 
-<div class="fn">
-<span class="fn-sig">migrate_to_plugin_paths() · line 1625</span>
-<p>Called by <a href="service-py.html">service.py</a> on every startup
-(master mode only). Idempotent — on a fully-migrated DB every SELECT
-inside returns zero rows and it exits cleanly.</p>
-<p>Why it's still called on every startup (not just once): the addon can be
-re-installed, the DB can be restored from a snapshot, or a stale Kodi
-scanner run can sneak disk-folder rows back in. Running this on every
-startup guarantees the invariant — emerald-clean DB, all episodes and
-movies attached to <code>PLUGIN_SOURCE_PATH</code>, exclude=1 on every
-disk-folder path row — is re-established within a few seconds of boot no
-matter what state the DB is in.</p>
-<p>Steps (each is a no-op if the DB is already in the target state):</p>
-<ol>
-<li>Run <code>_repair_scraper_path_settings</code>.</li>
-<li>Insert the <code>PLUGIN_SOURCE_PATH</code> path row if missing
-(<code>exclude=0</code> at this stage — <code>ensure_series_path_config</code>
-later flips it to 1).</li>
-<li>For every <code>episode</code> row joined to a <code>files</code> row
-on a disk path matching <code>%easyplaytv%…/Series/%…/.strm</code>,
-read the .strm file (or scan sibling files for an S<em>N</em>E<em>N</em>
-regex match), parse out the <code>plugin://…?…</code> URL, write a new
-<code>files</code> row under <code>PLUGIN_SOURCE_PATH</code> with the
-query-string as <code>strFilename</code>, UPDATE
-<code>episode.idFile</code> and <code>episode.c18</code>, delete the old
-file_id.</li>
-<li>Same for movies — also rewrites <code>movie.idFile</code> and re-inserts
-the <code>videoversion</code> row that Kodi 21 expects.</li>
-<li>For every distinct <code>tvshowlinkpath</code> on a disk path, record
-the <code>idShow</code>s, DELETE all the old <code>tvshowlinkpath</code>
-rows, then <strong>UPDATE path SET exclude=1 WHERE strPath LIKE
-…/Series/%</strong> (lines 1773-1777) to keep Kodi's scanner off the
-per-season disk-folder rows. Without this, the disk folders would be
-re-attached to the scanner on every Kodi boot, undoing the direct-write
-design.</li>
-<li>Re-link every show to <code>PLUGIN_SOURCE_PATH</code> via
-<code>INSERT IGNORE INTO tvshowlinkpath</code>.</li>
-</ol>
+<div class="callout warn"><span class="callout-title">Note on removed migration code</span>
+<p>The <code>migrate_to_plugin_paths()</code> and
+<code>_repair_scraper_path_settings()</code> functions were removed in v1.0.0.
+The migration was a startup-time reconciliation that ran on every boot to
+re-establish the <code>plugin://</code> path invariant. It was removed because
+it caused ~2.5 min startup delays on Pi by contending with Kodi's own
+boot-time DB connections. The DB is now maintained correctly by the sync
+engine and the <code>ensure_series_path_config()</code> guard at the start
+of each sync run.</p>
+</div>
+</div>
 
-<div class="callout warn"><span class="callout-title">Idempotent by design</span>
-<p>Safe to call on every service startup. Every UPDATE / INSERT is
-guarded by a SELECT or uses <code>INSERT IGNORE</code>, so a clean DB
-takes the no-op path through the function; the "Migrating 0 episode path
-entries" / "Migrating 0 movie path entries" log lines are expected and
-indicate the invariant is held.</p>
-</div>
-</div>
+<section class="share-section">
+  <h2>Share this page</h2>
+  <div class="share-buttons">
+    <a class="share-btn share-twitter" href="https://twitter.com/intent/tweet?url=https://scottrix.github.io/EasyPlayTV-docs/files/library_sync-py.html&text=library_sync.py%20%E2%80%94%20EasyPlayTV%20docs" target="_blank" rel="noopener" title="Share on Twitter">Twitter</a>
+    <a class="share-btn share-facebook" href="https://www.facebook.com/sharer/sharer.php?u=https://scottrix.github.io/EasyPlayTV-docs/files/library_sync-py.html" target="_blank" rel="noopener" title="Share on Facebook">Facebook</a>
+    <a class="share-btn share-linkedin" href="https://www.linkedin.com/sharing/share-offsite/?url=https://scottrix.github.io/EasyPlayTV-docs/files/library_sync-py.html" target="_blank" rel="noopener" title="Share on LinkedIn">LinkedIn</a>
+    <a class="share-btn share-whatsapp" href="https://wa.me/?text=library_sync.py%20%E2%80%94%20EasyPlayTV%20docs%20https://scottrix.github.io/EasyPlayTV-docs/files/library_sync-py.html" target="_blank" rel="noopener" title="Share on WhatsApp">WhatsApp</a>
+    <a class="share-btn share-copy" href="#" data-url="https://scottrix.github.io/EasyPlayTV-docs/files/library_sync-py.html" title="Copy link">Copy Link</a>
+  </div>
+</section>
 
 <footer class="site">
 <span>← Previous: <a href="catalog_check-py.html">catalog_check.py</a></span>
@@ -528,5 +554,44 @@ indicate the invariant is held.</p>
 </footer>
 </main>
 </div>
+
+<footer class="site-footer">
+  <p>EasyPlayTV docs &mdash; Documentation for the EasyPlayTV Kodi video add-on</p>
+  <p>This site contains affiliate links. We may earn a commission if you purchase through these links.</p>
+  <p>&copy; 2025 Scottrix | <a href="https://github.com/scottrix/EasyPlayTV-docs">GitHub</a> | <a href="https://scottrix.github.io/">Home</a> | <a href="mailto:easyplaytv@scott.scottrix.co.uk">Contact</a></p>
+</footer>
+<script src="../assets/affiliate-images.js"></script>
+<script>
+document.querySelectorAll('.share-copy').forEach(function(btn){btn.addEventListener('click',function(e){e.preventDefault();var url=this.getAttribute('data-url');navigator.clipboard.writeText(url).then(function(){btn.textContent='Copied!';setTimeout(function(){btn.textContent='Copy Link'},2000)});});});
+</script>
+<script>
+(function(){
+  var btn=document.getElementById('mobile-menu-btn');
+  var nav=document.getElementById('mobile-nav');
+  var close=document.getElementById('close-mobile');
+  var overlay=document.getElementById('overlay');
+  function open(){nav.classList.add('open');overlay.classList.add('open')}
+  function closeNav(){nav.classList.remove('open');overlay.classList.remove('open')}
+  if(btn)btn.addEventListener('click',open);
+  if(close)close.addEventListener('click',closeNav);
+  if(overlay)overlay.addEventListener('click',closeNav);
+})();
+</script>
+<script>
+(function(){
+  var btn=document.getElementById('theme-toggle');
+  if(!btn)return;
+  var root=document.documentElement;
+  var saved=localStorage.getItem('theme');
+  if(saved==='light')root.classList.add('light-mode');
+  btn.addEventListener('click',function(){
+    root.classList.toggle('light-mode');
+    var isLight=root.classList.contains('light-mode');
+    localStorage.setItem('theme',isLight?'light':'dark');
+    btn.textContent=isLight?'\u2600\uFE0F':'\uD83C\uDF19';
+  });
+  if(root.classList.contains('light-mode'))btn.textContent='\u2600\uFE0F';
+})();
+</script>
 </body>
 </html>

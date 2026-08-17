@@ -5,13 +5,20 @@
 
 const NAV_GROUPS = [
   {
-    title: "Overview",
+    title: "Getting started",
     items: [
       { href: "index.html",                 label: "Home",                 tags: "intro landing" },
+      { href: "pages/installation.html",    label: "Installation",         tags: "install setup zip manual mysql" },
+      { href: "pages/usage.html",           label: "Usage",                tags: "config settings live tv sync sign-in" },
+      { href: "pages/troubleshooting.html", label: "Troubleshooting",      tags: "known issues fixes errors" },
+    ],
+  },
+  {
+    title: "Developer docs",
+    items: [
       { href: "pages/architecture.html",    label: "Architecture",          tags: "overview big-picture dataflow" },
       { href: "pages/db-schema.html",       label: "Kodi DB schema",       tags: "mariadb tvshow episode path files" },
       { href: "pages/provider-matrix.html", label: "Provider matrix",      tags: "comparison bbc itvx my5 c4 stv blaze" },
-      { href: "pages/troubleshooting.html", label: "Troubleshooting",      tags: "known issues fixes" },
     ],
   },
   {
@@ -77,6 +84,7 @@ function buildNav() {
   }
   nav.innerHTML = `
     <a class="brand" href="${resolveHref('index.html')}">EasyPlayTV docs</a>
+    <a class="scottrix-link" href="https://scottrix.github.io/">Scottrix &#8599;</a>
     <input type="search" class="search" placeholder="Filter nav…" aria-label="Filter navigation" autocomplete="off">
     ${NAV_GROUPS.map(g => `
       <div class="group" data-group>

@@ -1,47 +1,118 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<script>/* gcanonical-redirect */(function(){var p=location.pathname,q=location.search,h=location.hash,m=/^(.*)\/index\.html$/.exec(p);if(m){location.replace(m[1]+"/"+q+h);return}if(!p.endsWith("/")&&!/\.[a-z0-9]{1,10}$/i.test(p)){location.replace(p+".html"+q+h)}})();</script>
 <meta charset="utf-8">
-<title>EasyPlayTV docs — Home</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EasyPlayTV docs — Kodi UK Live TV &amp; On-Demand Add-on</title>
+<meta name="description" content="Documentation for EasyPlayTV, a free Kodi video add-on for UK live TV channels and on-demand content. BBC iPlayer, ITVX, Channel 4, My5, Sky News, STV, Blaze — 28+ channels.">
+<meta name="keywords" content="Kodi addon, EasyPlayTV, UK live TV, BBC iPlayer, ITVX, Channel 4, My5, Sky News, STV Player, Blaze, Kodi plugin, Raspberry Pi, OSMC, DASH, Widevine">
+<meta name="author" content="Scott Rix">
+<meta name="robots" content="index, follow">
+<link rel="canonical" href="https://scottrix.github.io/EasyPlayTV-docs/">
+<meta property="og:title" content="EasyPlayTV docs — Kodi UK Live TV Add-on">
+<meta property="og:description" content="Documentation for EasyPlayTV, a free Kodi video add-on for UK live TV and on-demand content. 28+ channels from BBC, ITV, Channel 4, My5, Sky, STV, Blaze.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://scottrix.github.io/EasyPlayTV-docs/">
+<meta property="og:site_name" content="EasyPlayTV docs">
+<meta property="og:locale" content="en_US">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="EasyPlayTV docs — Kodi UK Live TV Add-on">
+<meta name="twitter:description" content="Documentation for EasyPlayTV, a free Kodi video add-on for UK live TV and on-demand content.">
 <link rel="stylesheet" href="assets/style.css">
 <script src="assets/nav.js" defer></script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  "name": "EasyPlayTV docs",
+  "url": "https://scottrix.github.io/EasyPlayTV-docs/",
+  "description": "Documentation for EasyPlayTV, a free Kodi video add-on for UK live TV and on-demand content."
+}
+</script>
 </head>
 <body data-page="index">
 <a class="skip-link" href="#main">Skip to content</a>
+
+<header class="site-header">
+  <div class="header-content">
+    <a href="https://scottrix.github.io/EasyPlayTV-docs/" class="logo">&#127916; EasyPlayTV docs</a>
+    <nav class="nav">
+      <a href="https://scottrix.github.io/">Scottrix</a>
+      <a href="#features">Features</a>
+      <a href="#developers">Developers</a>
+      <a href="#about">About</a>
+    </nav>
+    <div class="header-actions">
+      <button id="theme-toggle" class="theme-btn" title="Toggle theme">&#127769;</button>
+      <button id="mobile-menu-btn" class="mobile-menu-btn">&#9776;</button>
+    </div>
+  </div>
+</header>
+
+<div class="mobile-nav" id="mobile-nav">
+  <div class="mobile-nav-header">
+    <span class="logo">&#127916; EasyPlayTV docs</span>
+    <button id="close-mobile" class="close-btn">&#10005;</button>
+  </div>
+  <nav class="mobile-nav-links">
+    <a href="https://scottrix.github.io/">Scottrix</a>
+    <a href="#features">Features</a>
+    <a href="#developers">Developers</a>
+    <a href="#about">About</a>
+  </nav>
+</div>
+<div class="overlay" id="overlay"></div>
+
 <div class="layout">
 <nav class="sidebar"></nav>
 <main id="main">
-<h1>EasyPlayTV — source walkthrough</h1>
-<p>Hand-written documentation for the EasyPlayTV Kodi addon. Each page covers one
-source file (or one subsystem) explaining <em>what it does, why it does it that way,
-and where the sharp edges are</em>. Use the sidebar to navigate, or follow one of
-the routes below.</p>
 
-<h2>Two-sentence summary</h2>
-<p>EasyPlayTV is a Kodi video addon that aggregates free-to-air UK streaming
-catch-up services — BBC iPlayer, ITVX, My5, Channel 4, STV, Blaze — plus a couple
-of live channels (Sky News). It does two jobs:</p>
+<div class="disclaimer-banner"><strong>Disclaimer:</strong> This documentation is provided for convenience and may contain errors. Always verify information against the official Kodi and provider documentation. <a href="mailto:easyplaytv@scott.scottrix.co.uk">Report issues</a>.</div>
+
+<a class="fastmail-topbar" data-banner="fastmail" href="https://join.fastmail.com/0d63b2d52105" target="_blank" rel="noopener"><img src="../FM Billboard 970x250.png" alt="Fastmail" loading="lazy"></a>
+<a class="fastmail-topbar" data-banner="dynadot" href="https://www.dynadot.com/?ref=scottrix" target="_blank" rel="nofollow noopener" hidden><img src="../dynadot-banner.jpg" alt="Dynadot — register a new domain, web hosting, SSL" loading="lazy" onerror="this.parentElement.style.display='none';document.querySelector('[data-banner=fastmail]').hidden=false"></a>
+<script>(function(){var fm=document.querySelector('[data-banner=fastmail]');var dd=document.querySelector('[data-banner=dynadot]');if(Math.random()<0.5){fm.hidden=true;dd.hidden=false}})();</script>
+
+<h1>EasyPlayTV</h1>
+
+<p>A Kodi video add-on providing UK live TV channels and on-demand content from <strong>BBC iPlayer</strong>, <strong>ITVX</strong>, <strong>Channel 4</strong>, <strong>My5</strong>, <strong>Sky News</strong>, <strong>STV Player</strong>, and <strong>Blaze</strong> — all self-contained with no external plugin dependencies.</p>
+
+<h2 id="get-started">Get started</h2>
+<table>
+<thead><tr><th>What you want to do</th><th>Go to</th></tr></thead>
+<tbody>
+<tr><td>Install the addon</td><td><a href="pages/installation.html">Installation</a></td></tr>
+<tr><td>Configure settings and browse content</td><td><a href="pages/usage.html">Usage</a></td></tr>
+<tr><td>Fix a problem</td><td><a href="pages/troubleshooting.html">Troubleshooting</a></td></tr>
+</tbody>
+</table>
+
+<h2 id="features">Features</h2>
+<ul>
+<li><strong>28+ live TV channels</strong> — BBC, ITV, Channel 4, Channel 5, Sky News, STV, Blaze</li>
+<li><strong>Movies &amp; TV Shows library</strong> — synced to Kodi's library with TMDb metadata (posters, fanart, plots, ratings)</li>
+<li><strong>Provider badges</strong> — <code>[BBC]</code>, <code>[ITVX]</code>, <code>[C4]</code>, <code>[My5]</code>, <code>[STV]</code>, <code>[BLAZE]</code> on all titles</li>
+<li><strong>Background sync</strong> — each provider syncs every 6 hours automatically</li>
+<li><strong>Optional sign-in</strong> — ITVX, Channel 4, and My5 account login for premium content</li>
+</ul>
+
+<h2 id="developers">For developers</h2>
+<p>EasyPlayTV is two cooperating processes inside Kodi:</p>
 <ol>
-<li><strong>Live TV grid</strong> — exposes the live-channel resolvers (BBC,
-Sky News, C4, ITVX, STV, Blaze) behind a single plugin:// browse UI.</li>
-<li><strong>Populate the Kodi library</strong> — a background service syncs the
-provider catalogues into Kodi's central MariaDB video database as if they were
-on-disk files, using <code>plugin://</code> URLs as virtual filenames so the rows
-behave like any other Kodi library entry. The user then browses Movies and TV
-Shows through Kodi's own library views; the addon never serves the catalogue.</li>
+<li><strong>Plugin</strong> — <code>default.py</code>, invoked on every listitem click. Short-lived, stateless: routes URLs to per-provider resolvers.</li>
+<li><strong>Service</strong> — <code>service.py</code>, a long-lived <code>xbmc.Monitor</code> daemon that syncs provider catalogues into the Kodi MySQL database every 6 hours.</li>
 </ol>
 
-<h2>Where to start</h2>
 <table>
-<thead><tr><th>If you want to understand…</th><th>Start at</th></tr></thead>
+<thead><tr><th>Developer docs</th><th>Description</th></tr></thead>
 <tbody>
-<tr><td>the big picture and the data flow between modules</td><td><a href="pages/architecture.html">Architecture</a></td></tr>
-<tr><td>what Kodi tables the addon writes to and why</td><td><a href="pages/db-schema.html">Kodi DB schema</a></td></tr>
-<tr><td>how the various provider modules compare (endpoints, auth, DRM, pagination)</td><td><a href="pages/provider-matrix.html">Provider matrix</a></td></tr>
-<tr><td>known crashes / failures and their fixes</td><td><a href="pages/troubleshooting.html">Troubleshooting</a></td></tr>
-<tr><td>how a single button-press (from Kodi's library) turns into DASH playback</td><td><a href="files/default-py.html">default.py</a></td></tr>
-<tr><td>how a 6-hour scheduled sync populates the library</td><td><a href="files/service-py.html">service.py</a> → <a href="files/library_sync-py.html">library_sync.py</a></td></tr>
+<tr><td><a href="pages/architecture.html">Architecture</a></td><td>Big picture, data flow between modules, request flow</td></tr>
+<tr><td><a href="pages/db-schema.html">Kodi DB schema</a></td><td>What Kodi tables the addon writes to and why</td></tr>
+<tr><td><a href="pages/provider-matrix.html">Provider matrix</a></td><td>How providers compare (endpoints, auth, DRM, pagination)</td></tr>
+<tr><td><a href="files/default-py.html">default.py</a></td><td>How a button-press turns into DASH playback</td></tr>
+<tr><td><a href="files/service-py.html">service.py</a></td><td>How the 6-hour scheduled sync works</td></tr>
+<tr><td><a href="files/library_sync-py.html">library_sync.py</a></td><td>The sync engine (1.6k LOC — heart of the addon)</td></tr>
 </tbody>
 </table>
 
@@ -52,56 +123,113 @@ Shows through Kodi's own library views; the addon never serves the catalogue.</l
 ├── service.py                — long-lived Kodi Monitor daemon (scheduled syncs)
 ├── README.md
 └── resources/
-    ├── settings.xml          — addon settings UI (db_source, max_resolution, itvx creds, …)
+    ├── settings.xml          — addon settings UI
     ├── language/en_gb/strings.po
     └── lib/
-        ├── __init__.py        — shared helpers: provider_map, setup_dash_item, get_ua, …
+        ├── __init__.py        — shared helpers
         ├── genres.py          — PROVIDER_LABELS lookup
-        ├── library_sync.py    — sync engine (1.7k LOC — heart of the addon)
-        ├── strm.py            — URL builders (_build_*_strm_url) + show fetcher for sync
-        ├── catalog_check.py   — small stale-title marker (marks DB rows whose source has gone)
+        ├── library_sync.py    — sync engine (heart of the addon)
+        ├── strm.py            — URL builders + show fetchers for sync
+        ├── catalog_check.py   — stale title marker
         │
         ├── bbc.py / bbc_vod.py     — BBC iPlayer live + VOD
-        ├── itvx.py / itvx_vod.py   — ITVX live + VOD (OAuth/JWT session)
-        ├── c4.py / c4_vod.py       — Channel 4 live + VOD (AES-CBC token decrypt + Widevine)
-        ├── my5.py / my5_vod.py     — My5 VOD (Cassie HMAC/AES keys + optional AWS Cognito sign-in)
+        ├── itvx.py / itvx_vod.py   — ITVX live + VOD
+        ├── c4.py / c4_vod.py       — Channel 4 live + VOD
+        ├── my5.py / my5_vod.py     — My5 VOD
         ├── stv.py / stv_vod.py     — STV live + VOD
         ├── blaze.py / blaze_vod.py — Blaze TV (HTML scraping)
         └── sky.py                  — Sky News live (Brightcove)
 </code></pre>
 
-<h2>Conventions used in these docs</h2>
-<ul>
-<li><span class="pill">→ calls</span> — references the next function this code invokes</li>
-<li><span class="pill muted">← called by</span> — references upstream callers</li>
-<li><span class="pill warn">gotcha</span> — a known sharp edge worth flagging when reading</li>
-<li><span class="pill danger">don't</span> — anti-patterns / things known to break</li>
-</ul>
+<section class="affiliate-section">
+  <h2>Recommended</h2>
+  <div class="affiliate-cards">
+    <a href="https://www.amazon.co.uk/s?k=Raspberry+Pi+boards&tag=scottrix-21" class="affiliate-card" target="_blank" rel="nofollow noopener">
+      <div class="affiliate-card-title">Raspberry Pi Boards &amp; Accessories &rarr;</div>
+      <div class="affiliate-card-desc">Browse Raspberry Pi boards, cases, and accessories on Amazon — ideal for running OSMC and Kodi</div>
+      <div class="affiliate-card-store"><img src="../amazon-smile.svg" alt="Amazon"> amazon.co.uk</div>
+      <div class="affiliate-card-urgency">Perfect for Kodi media centres</div>
+    </a>
+    <a href="https://www.amazon.co.uk/s?k=Kodi+media+center+HTPC&tag=scottrix-21" class="affiliate-card" target="_blank" rel="nofollow noopener">
+      <div class="affiliate-card-title">Kodi &amp; HTPC Accessories &rarr;</div>
+      <div class="affiliate-card-desc">Browse HDMI cables, remotes, and media centre accessories on Amazon</div>
+      <div class="affiliate-card-store"><img src="../amazon-smile.svg" alt="Amazon"> amazon.co.uk</div>
+    </a>
+    <a href="https://join.fastmail.com/0d63b2d52105" class="affiliate-card" target="_blank" rel="nofollow noopener">
+      <div class="affiliate-card-title">Fastmail — Private Email</div>
+      <div class="affiliate-card-desc">Privacy-first email with no ads and no tracking</div>
+      <div class="affiliate-card-store">fastmail.com</div>
+    </a>
+    <a href="https://www.dynadot.com/?ref=scottrix" class="affiliate-card" target="_blank" rel="nofollow noopener">
+      <div class="affiliate-card-title">Dynadot — Domain Registration &rarr;</div>
+      <div class="affiliate-card-desc">Register or transfer domains with free SSL and affordable pricing</div>
+      <div class="affiliate-card-store">dynadot.com</div>
+    </a>
+    <a href="https://zen.mention-me.com/m/ol/yv3qsjix-scott-harrison" class="affiliate-card" target="_blank" rel="nofollow noopener">
+      <div class="affiliate-card-title">Zen Internet — UK Broadband &rarr;</div>
+      <div class="affiliate-card-desc">Award-winning UK broadband with no data caps and great customer service</div>
+      <div class="affiliate-card-store">zen.co.uk</div>
+    </a>
+  </div>
+  <div class="affiliate-disclaimer">We may earn a commission if you purchase through these links.</div>
+</section>
 
-<p>Code samples in the docs are illustrative — for the truth, read the source.
-Each per-file page lists the canonical path and line count in a meta box at the
-top so you can keep the source open in another pane while you read.</p>
-
-<h2>Quick numbers (current production tor box)</h2>
-<table>
-<thead><tr><th>What</th><th>Value</th></tr></thead>
-<tbody>
-<tr><td>tvshows in DB (prefixed <code>[PROVIDER] Title</code>)</td><td>6,114</td></tr>
-<tr><td>episodes</td><td>128,768</td></tr>
-<tr><td>per-episode files table rows (all under <code>plugin://plugin.video.easyplaytv/</code>)</td><td>123,797</td></tr>
-<tr><td>movies</td><td>889</td></tr>
-<tr><td>providers</td><td>BBC, ITVX, My5, C4, STV, Blaze (live+VOD), Sky News (live only)</td></tr>
-<tr><td>sync cadence</td><td>staggered every 6 h (BBC 00:00, ITVX 00:30, C4 01:00, My5 01:30, STV 02:00, Blaze 02:30)</td></tr>
-<tr><td>Kodi DB</td><td>MariaDB at 192.168.178.17:3306 / MyVideos131 (kodi/kodi)</td></tr>
-<tr><td>target hardware</td><td>Raspberry Pi 3 (OSMC) + V4L2 mem2mem Widevine</td></tr>
-</tbody>
-</table>
+<section class="share-section">
+  <h2>Share this page</h2>
+  <div class="share-buttons">
+    <a class="share-btn share-twitter" href="https://twitter.com/intent/tweet?url=https://scottrix.github.io/EasyPlayTV-docs/&text=EasyPlayTV%20docs%20%E2%80%94%20Kodi%20UK%20Live%20TV%20Add-on" target="_blank" rel="noopener" title="Share on Twitter">Twitter</a>
+    <a class="share-btn share-facebook" href="https://www.facebook.com/sharer/sharer.php?u=https://scottrix.github.io/EasyPlayTV-docs/" target="_blank" rel="noopener" title="Share on Facebook">Facebook</a>
+    <a class="share-btn share-linkedin" href="https://www.linkedin.com/sharing/share-offsite/?url=https://scottrix.github.io/EasyPlayTV-docs/" target="_blank" rel="noopener" title="Share on LinkedIn">LinkedIn</a>
+    <a class="share-btn share-whatsapp" href="wa.me/?text=EasyPlayTV%20docs%20https://scottrix.github.io/EasyPlayTV-docs/" target="_blank" rel="noopener" title="Share on WhatsApp">WhatsApp</a>
+    <a class="share-btn share-copy" href="#" data-url="https://scottrix.github.io/EasyPlayTV-docs/" title="Copy link">Copy Link</a>
+  </div>
+</section>
 
 <footer class="site">
-<span>Generated by hand · <a href="pages/troubleshooting.html">see troubleshooting for known issues</a></span>
-<span>Repo: <a href="https://github.com/scottrix/EasyPlayTV-docs">scottrix/EasyPlayTV-docs</a></span>
+  <span>Generated by hand · <a href="pages/troubleshooting.html">see troubleshooting for known issues</a></span>
+  <span>Repo: <a href="https://github.com/scottrix/EasyPlayTV-docs">scottrix/EasyPlayTV-docs</a></span>
 </footer>
 </main>
 </div>
+
+<footer class="site-footer">
+  <p>EasyPlayTV docs &mdash; Documentation for the EasyPlayTV Kodi video add-on</p>
+  <p>This site contains affiliate links. We may earn a commission if you purchase through these links.</p>
+  <p>&copy; 2025 Scottrix | <a href="https://github.com/scottrix/EasyPlayTV-docs">GitHub</a> | <a href="https://scottrix.github.io/">Home</a> | <a href="mailto:easyplaytv@scott.scottrix.co.uk">Contact</a></p>
+</footer>
+
+<script src="assets/affiliate-images.js"></script>
+<script>
+document.querySelectorAll('.share-copy').forEach(function(btn){btn.addEventListener('click',function(e){e.preventDefault();var url=this.getAttribute('data-url');navigator.clipboard.writeText(url).then(function(){btn.textContent='Copied!';setTimeout(function(){btn.textContent='Copy Link'},2000)});});});
+</script>
+<script>
+(function(){
+  var btn=document.getElementById('mobile-menu-btn');
+  var nav=document.getElementById('mobile-nav');
+  var close=document.getElementById('close-mobile');
+  var overlay=document.getElementById('overlay');
+  function open(){nav.classList.add('open');overlay.classList.add('open')}
+  function closeNav(){nav.classList.remove('open');overlay.classList.remove('open')}
+  if(btn)btn.addEventListener('click',open);
+  if(close)close.addEventListener('click',closeNav);
+  if(overlay)overlay.addEventListener('click',closeNav);
+})();
+</script>
+<script>
+(function(){
+  var btn=document.getElementById('theme-toggle');
+  if(!btn)return;
+  var root=document.documentElement;
+  var saved=localStorage.getItem('theme');
+  if(saved==='light')root.classList.add('light-mode');
+  btn.addEventListener('click',function(){
+    root.classList.toggle('light-mode');
+    var isLight=root.classList.contains('light-mode');
+    localStorage.setItem('theme',isLight?'light':'dark');
+    btn.textContent=isLight?'\u2600\uFE0F':'\uD83C\uDF19';
+  });
+  if(root.classList.contains('light-mode'))btn.textContent='\u2600\uFE0F';
+})();
+</script>
 </body>
 </html>
