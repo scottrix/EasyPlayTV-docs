@@ -495,6 +495,66 @@ a.pill:hover { text-decoration: underline; }
 }
 .affiliate-disclaimer { font-size: 0.75rem; color: var(--text-faint); margin-top: 0.8rem; }
 
+/* Download CTA */
+.download-cta {
+  background: var(--accent-soft);
+  border: 1px solid var(--accent);
+  border-left-width: 4px;
+  border-radius: 8px;
+  padding: 20px 24px;
+  margin: 0 0 24px;
+}
+.download-cta h3 {
+  margin: 0 0 6px;
+  font-size: 18px;
+  color: var(--accent);
+}
+.download-cta p {
+  margin: 0 0 10px;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+.download-cta .dl-links {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.download-cta .dl-btn {
+  display: inline-block;
+  padding: 8px 18px;
+  border-radius: 6px;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+  font-size: 14px;
+  text-decoration: none;
+  transition: background 0.2s;
+}
+.download-cta .dl-btn:hover { background: var(--accent-hover); text-decoration: none; }
+.download-cta .dl-secondary {
+  font-size: 13px;
+  color: var(--text-faint);
+}
+.download-cta .dl-secondary a { color: var(--text-secondary); }
+.download-cta .dl-meta {
+  font-size: 12px;
+  color: var(--text-faint);
+  margin-top: 8px;
+}
+.pill.version {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-family: var(--mono);
+  background: var(--accent-soft);
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  text-decoration: none;
+  margin: 0 4px;
+}
+
 /* Share section */
 .share-section { text-align: center; padding: 1.5rem 0; }
 .share-buttons { display: flex; gap: 0.5rem; justify-content: center; flex-wrap: wrap; margin-top: 0.5rem; }
