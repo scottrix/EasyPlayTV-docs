@@ -109,9 +109,21 @@ Note the differences:</p>
 <li>WEB_REQ_DATA is for live simulcast — uses <em>"platformTag": "dotcom"</em>
 and <em>"featureset": {"min": ["mpeg-dash", "widevine"], "max": ["hd",
 "mpeg-dash", "widevine", "inband-webvtt"]}</em>.</li>
-<li>VOD_REQ_DATA uses <em>"platformTag": "ctv"</em> (connected-TV — appears
-to yield higher-bitrate variants), and a flat <em>"featureset": ["mpeg-dash",
-"widevine", "outband-webvtt", "hd", "single-track"]</em>.</li>
+<li>VOD_REQ_DATA uses <em>"platformTag": "dotcom"</em> (browser identity).
+Only <code>"dotcom"</code> and <code>"ctv"</code> are accepted — all others
+return HTTP 400. <code>"dotcom"</code> applies a 720p video filter (no 1080p);
+<code>"ctv"</code> serves the full resolution ladder. Both return the
+same DRM entitlement from the Irdeto license server — the VMP entitlement
+(<code>itvx_ctv_soft_protect_hd</code>) is content-level, not platform-level.
+Audio always fails on L3 Widevine regardless of platformTag: the CDM
+oscillates the key between kUsable and kExpired/SystemCode5 due to VMP
+requirements. Video works via V4L2 hardware decode (NOSECUREDECODER) which
+bypasses the CDM; audio has no hardware path. Live already uses
+<code>"dotcom"</code> via WEB_REQ_DATA. When upstream
+<a href="https://github.com/xbmc/inputstream.adaptive/pull/2021">IA PR #2021</a>
+lands, the CDM audio decoder interface will bypass the single-decrypt VMP check.
+Flat featureset:
+<em>["mpeg-dash", "widevine", "outband-webvtt", "hd", "single-track"]</em>.</li>
 </ul>
 </div>
 <div class="fn">

@@ -203,6 +203,34 @@ tab of the C5 web player to find the new JS bundle URL.</p>
 </div>
 
 <div class="callout warn">
+<span class="callout-title">ITVX VOD: video plays but no audio on certain shows</span>
+<p><strong>Symptom:</strong> VOD content (especially non-ITV produced shows
+like Disney+ originals, "The Affair", "Downton Abbey Celebrates the Finale")
+plays video but audio is missing. The player's audio settings show
+"NONE". Affects all Kodi platforms — Pi, CoreELEC, Windows. The same
+content plays with audio in Chrome/Edge browsers.</p>
+<p><strong>Cause:</strong> The Irdeto license server assigns VMP entitlements
+(<code>itvx_ctv_soft_protect_hd</code>) per-content. On L3 Widevine (e.g.
+Raspberry Pi), VMP cannot be satisfied — the audio key oscillates between
+kUsable and kExpired/SystemCode5, so audio decryption never completes.
+This is NOT bypassable by changing <code>platformTag</code> — both
+<code>"dotcom"</code> and <code>"ctv"</code> receive the same entitlement.
+Video works because V4L2 hardware decode bypasses the CDM entirely; audio
+has no hardware path. Browsers satisfy VMP natively; Kodi's
+inputstream.adaptive cannot. See
+<a href="https://github.com/dimkroon/itvx-for-kodi/issues/182">viwX #182</a>
+and <a href="https://forum.kodi.tv/showthread.php?tid=374239">Kodi forum #191, #202</a>.</p>
+<p><strong>Current state:</strong> EasyPlayTV uses <code>"platformTag": "dotcom"</code>
+which limits VOD to 720p (no 1080p). Audio still fails on L3 — this is the
+same issue affecting viwX and all other L3 Widevine Kodi addons.
+Live channels are unaffected (already use <code>"dotcom"</code>).
+See <a href="https://github.com/xbmc/inputstream.adaptive/pull/2021">IA PR #2021</a>
+and <a href="https://github.com/xbmc/xbmc/pull/28204">xbmc PR #28204</a>
+for the upstream fix implementing the CDM audio decoder interface that will
+bypass the single-decrypt VMP check (targeting Kodi v23, no ETA).</p>
+</div>
+
+<div class="callout warn">
 <span class="callout-title">ITVX playback: "session expired - sign in again"</span>
 <p><strong>Cause:</strong> refresh token expired (they live ~30 days).
 The user's saved credentials in addon settings are still valid but the
