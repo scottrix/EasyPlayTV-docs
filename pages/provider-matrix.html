@@ -172,7 +172,11 @@ lists):</p>
 <p>The addon lists the full Freeview/Freely lineup (London NID 64865 +
 Central Scotland NID 64993, selectable via the <em>Freely region</em>
 setting). Channels without a free IP stream resolve through a stub resolver
-that shows a &ldquo;not implemented&rdquo; popup. This is what was tried for
+that shows a &ldquo;not implemented&rdquo; popup. Nine more Freely channels were wired in Aug&nbsp;2026 from clear Samsung TV Plus feeds:
+5 Cops, LOVE AFTER LOCKUP, TRUE CRIME UK, EVIDENCE OF EVIL, BLOODLINE DETECTIVES,
+AMC REALITY, CNN Headlines International, Ketchup TV and talkSPORT (radio).
+Stub-resolver channels render greyed-out (<code>[COLOR gray]</code>) in the addon grid
+and PVR channel list. This is what was tried for
 each blocked group:</p>
 <table>
 <thead><tr><th>Channel(s)</th><th>Sources tried</th><th>Outcome</th></tr></thead>
@@ -180,6 +184,7 @@ each blocked group:</p>
 <tr><td>TLC, Quest, Quest Red <span class="pill muted">LCN 17/18/34</span></td><td>Samsung TV Plus GB list; Pluto UK; Roku; Plex UK; iptv-org streams DB</td><td><span class="pill muted">blocked</span> WBD stated (Dec&nbsp;2025) Freely is the only free streaming home for these six FTA linears. Freely's own feed is Widevine L3/Irdeto — same Pi DRM wall as ITVX audio.</td></tr>
 <tr><td>Sky Arts, Sky Mix <span class="pill muted">LCN 24/23</span></td><td>Samsung TV Plus GB via <code>jmp2.uk/stvp-GB60000197</code>/<code>-GBBD3100006XM</code> — worked briefly</td><td><span class="pill muted">DRM-locked</span> Samsung flipped both to <code>HLS_CMAF_DRM</code>: SAMPLE-AES-CTR Widevine licensed by BuyDRM KeyOS. Clear <code>HLS_CMAF</code> rendition returns HTTP&nbsp;400. Playing needs Samsung device-auth emulation to mint KeyOS licences per session — not maintainable.</td></tr>
 <tr><td>Great! TV, Great! Action <span class="pill muted">LCN 32/33</span></td><td>Amagi playout probe (612 host/slug combinations across LG/Samsung/Rakuten); community telecloud.tv relay behind GitHub master playlist; Plex UK</td><td><span class="pill muted">no source</span> Amagi hosts the Movies/Mystery/Romance sisters but no <code>greattv</code>/<code>greataction</code> slugs exist. The relay's child manifests return &ldquo;No segments&rdquo; (playback token isn't propagated to inner requests). Plex UK carries the sisters clear but not these two.</td></tr>
+<tr><td>Challenge <span class="pill muted">LCN 43</span></td><td>Samsung TV Plus GB (<code>jmp2.uk/stvp-GBBD3100005RX</code>)</td><td><span class="pill muted">DRM-locked</span> BuyDRM KeyOS Widevine, same as Sky Arts/Mix.</td></tr>
 <tr><td>London TV <span class="pill muted">LCN 8</span></td><td>uklocal.tv / londonlive.co.uk page scrape; old Akamai live endpoint; iptv-org</td><td><span class="pill muted">no source</span> Player config is AJAX-gated (JW Player WordPress plugin), no media id in static HTML. Akamai endpoint died with the Jan&nbsp;2025 London Live → London TV rebrand.</td></tr>
 <tr><td>That's TV, That's TV 2 <span class="pill muted">LCN 9/45</span></td><td>Community feed <code>92.114.85.72:8000/play/a0lb</code>; Pluto/Rakuten/LG FAST listings</td><td><span class="pill muted">no source</span> Community feed now returns 403 from UK IPs. Only the music spin-offs moved to FAST platforms (Feb&nbsp;2026); main channels remain aerial-only on Freely.</td></tr>
 <tr><td>All remaining stubs (minor FAST + radio)</td><td>Samsung TV Plus GB, Pluto UK, Roku, Plex UK, iptv-org cross-reference</td><td><span class="pill muted">no source</span> No free unencrypted simulcasts identified. Radio has none outside BBC Sounds (login-gated).</td></tr>
