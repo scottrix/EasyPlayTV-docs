@@ -174,7 +174,12 @@ Central Scotland NID 64993, selectable via the <em>Freely region</em>
 setting). Channels without a free IP stream resolve through a stub resolver
 that shows a &ldquo;not implemented&rdquo; popup. Nine more Freely channels were wired in Aug&nbsp;2026 from clear Samsung TV Plus feeds:
 5 Cops, LOVE AFTER LOCKUP, TRUE CRIME UK, EVIDENCE OF EVIL, BLOODLINE DETECTIVES,
-AMC REALITY, CNN Headlines International, Ketchup TV and talkSPORT (radio).
+AMC REALITY, CNN Headlines International, Ketchup TV and talkSPORT (radio). Later attempts added WildEarth (Roku), 5 Trucking Hell (Pluto) and France 24
+(Samsung) &mdash; France&nbsp;24's own public URL serves dead child manifests.
+Direct-HLS channels send a browser User-Agent: Pluto's stitcher rejects any UA
+containing <em>Kodi</em> with HTTP&nbsp;403. Two further gotchas when testing:
+jmp2.uk rate-limits bursts with transient 403s, and geo/promo slates look like
+healthy streams &mdash; compare segment sizes across variants to spot them.
 Stub-resolver channels render greyed-out (<code>[COLOR gray]</code>) in the addon grid
 and PVR channel list. This is what was tried for
 each blocked group:</p>
@@ -185,6 +190,9 @@ each blocked group:</p>
 <tr><td>Sky Arts, Sky Mix <span class="pill muted">LCN 24/23</span></td><td>Samsung TV Plus GB via <code>jmp2.uk/stvp-GB60000197</code>/<code>-GBBD3100006XM</code> — worked briefly</td><td><span class="pill muted">DRM-locked</span> Samsung flipped both to <code>HLS_CMAF_DRM</code>: SAMPLE-AES-CTR Widevine licensed by BuyDRM KeyOS. Clear <code>HLS_CMAF</code> rendition returns HTTP&nbsp;400. Playing needs Samsung device-auth emulation to mint KeyOS licences per session — not maintainable.</td></tr>
 <tr><td>Great! TV, Great! Action <span class="pill muted">LCN 32/33</span></td><td>Amagi playout probe (612 host/slug combinations across LG/Samsung/Rakuten); community telecloud.tv relay behind GitHub master playlist; Plex UK</td><td><span class="pill muted">no source</span> Amagi hosts the Movies/Mystery/Romance sisters but no <code>greattv</code>/<code>greataction</code> slugs exist. The relay's child manifests return &ldquo;No segments&rdquo; (playback token isn't propagated to inner requests). Plex UK carries the sisters clear but not these two.</td></tr>
 <tr><td>Challenge <span class="pill muted">LCN 43</span></td><td>Samsung TV Plus GB (<code>jmp2.uk/stvp-GBBD3100005RX</code>)</td><td><span class="pill muted">DRM-locked</span> BuyDRM KeyOS Widevine, same as Sky Arts/Mix.</td></tr>
+<tr><td>That's 60s / That's 70s <span class="pill muted">LCN 402/405</span></td><td>Pluto UK (via jmp2 proxy); segment-level verification of all three variants</td><td><span class="pill muted">promo slate</span> Pluto UK's instances are placeholder channels: every variant serves byte-identical static segments (logo loop). Real streams only inside the closed Rakuten TV app.</td></tr>
+<tr><td>EuroNews <span class="pill muted">LCN 559</span></td><td>Rakuten FAST (via Samsung GB); Pluto UK packager</td><td><span class="pill muted">broken packagers</span> Rakuten drops H.264 extradata &mdash; inputstream.adaptive logs <code>Codec id 27 require extradata</code> and disables video. Pluto instance is a logo-slate promo.</td></tr>
+<tr><td>QVC2 <span class="pill muted">LCN 453</span></td><td>Pluto (global list id)</td><td><span class="pill muted">geo-slate</span> id is US-only; not in Pluto's GB lineup, so UK sessions get the permanent logo slate.</td></tr>
 <tr><td>London TV <span class="pill muted">LCN 8</span></td><td>uklocal.tv / londonlive.co.uk page scrape; old Akamai live endpoint; iptv-org</td><td><span class="pill muted">no source</span> Player config is AJAX-gated (JW Player WordPress plugin), no media id in static HTML. Akamai endpoint died with the Jan&nbsp;2025 London Live → London TV rebrand.</td></tr>
 <tr><td>That's TV, That's TV 2 <span class="pill muted">LCN 9/45</span></td><td>Community feed <code>92.114.85.72:8000/play/a0lb</code>; Pluto/Rakuten/LG FAST listings</td><td><span class="pill muted">no source</span> Community feed now returns 403 from UK IPs. Only the music spin-offs moved to FAST platforms (Feb&nbsp;2026); main channels remain aerial-only on Freely.</td></tr>
 <tr><td>All remaining stubs (minor FAST + radio)</td><td>Samsung TV Plus GB, Pluto UK, Roku, Plex UK, iptv-org cross-reference</td><td><span class="pill muted">no source</span> No free unencrypted simulcasts identified. Radio has none outside BBC Sounds (login-gated).</td></tr>
