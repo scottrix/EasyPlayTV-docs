@@ -151,8 +151,9 @@ channel so the genre matrix doesn't apply.</p>
 </aside>
 
 <h2>Live channel matrix</h2>
-<p>The 30 live channels the addon exposes (from
-<a href="../files/default-py.html">default.py:BBC_LIVE_CHANNELS / CUTV_UK_CHANNELS / ITVX_LIVE_CHANNELS</a>):</p>
+<p>The live channels the addon exposes (<code>resources/lib/channels.py:
+iter_all_channels()</code> — BBC, CUTV, ITVX and the Freely expansion
+lists):</p>
 <table>
 <thead><tr><th>Provider</th><th>Live channels</th><th>Resolver</th></tr></thead>
 <tbody>
@@ -162,7 +163,39 @@ channel so the genre matrix doesn't apply.</p>
 <tr><td>Channel 4</td><td>Channel 4, E4, More4, Film4, 4seven</td><td><a href="../files/c4-py.html"><code>c4.resolve(item_id)</code></a></td></tr>
 <tr><td>My5</td><td>Channel 5, 5 Star, 5 USA, 5 Action, 5 Select</td><td><a href="../files/my5-py.html"><code>my5.resolve(item_id)</code></a></td></tr>
 <tr><td>Blaze</td><td>Blaze</td><td><a href="../files/blaze-py.html"><code>blaze.resolve(item_id)</code></a></td></tr>
-<tr><td>ITVX</td><td>ITV1, ITV2, ITV3, ITV4, ITVBe</td><td><a href="../files/itvx-py.html"><code>itvx.resolve(channel)</code></a></td></tr>
+<tr><td>ITVX</td><td>ITV1, ITV2, ITV3, ITV4, ITVBe, ITV Quiz (via inherited <code>ITVBe</code> simulcast slug)</td><td><a href="../files/itvx-py.html"><code>itvx.resolve(channel)</code></a></td></tr>
+<tr><td>HLS (direct)</td><td>Great! Movies, Great! Mystery, Great! Romance, True Crime, Talking Pictures TV, Together TV, TBN UK, GB News, QVC family, Pop family, Now 70s/80s/Rock, Gems TV, Jewellery Maker, Hobby Maker</td><td><code>hls_url</code> in <code>PVR_CHANNEL_MAP</code></td></tr>
+</tbody>
+</table>
+
+<h2>Freely expansion: stubbed channels and why they don't play</h2>
+<p>The addon lists the full Freeview/Freely lineup (London NID 64865 +
+Central Scotland NID 64993, selectable via the <em>Freely region</em>
+setting). Channels without a free IP stream resolve through a stub resolver
+that shows a &ldquo;not implemented&rdquo; popup. This is what was tried for
+each blocked group:</p>
+<table>
+<thead><tr><th>Channel(s)</th><th>Sources tried</th><th>Outcome</th></tr></thead>
+<tbody>
+<tr><td>TLC, Quest, Quest Red <span class="pill muted">LCN 17/18/34</span></td><td>Samsung TV Plus GB list; Pluto UK; Roku; Plex UK; iptv-org streams DB</td><td><span class="pill muted">blocked</span> WBD stated (Dec&nbsp;2025) Freely is the only free streaming home for these six FTA linears. Freely's own feed is Widevine L3/Irdeto — same Pi DRM wall as ITVX audio.</td></tr>
+<tr><td>Sky Arts, Sky Mix <span class="pill muted">LCN 24/23</span></td><td>Samsung TV Plus GB via <code>jmp2.uk/stvp-GB60000197</code>/<code>-GBBD3100006XM</code> — worked briefly</td><td><span class="pill muted">DRM-locked</span> Samsung flipped both to <code>HLS_CMAF_DRM</code>: SAMPLE-AES-CTR Widevine licensed by BuyDRM KeyOS. Clear <code>HLS_CMAF</code> rendition returns HTTP&nbsp;400. Playing needs Samsung device-auth emulation to mint KeyOS licences per session — not maintainable.</td></tr>
+<tr><td>Great! TV, Great! Action <span class="pill muted">LCN 32/33</span></td><td>Amagi playout probe (612 host/slug combinations across LG/Samsung/Rakuten); community telecloud.tv relay behind GitHub master playlist; Plex UK</td><td><span class="pill muted">no source</span> Amagi hosts the Movies/Mystery/Romance sisters but no <code>greattv</code>/<code>greataction</code> slugs exist. The relay's child manifests return &ldquo;No segments&rdquo; (playback token isn't propagated to inner requests). Plex UK carries the sisters clear but not these two.</td></tr>
+<tr><td>London TV <span class="pill muted">LCN 8</span></td><td>uklocal.tv / londonlive.co.uk page scrape; old Akamai live endpoint; iptv-org</td><td><span class="pill muted">no source</span> Player config is AJAX-gated (JW Player WordPress plugin), no media id in static HTML. Akamai endpoint died with the Jan&nbsp;2025 London Live → London TV rebrand.</td></tr>
+<tr><td>That's TV, That's TV 2 <span class="pill muted">LCN 9/45</span></td><td>Community feed <code>92.114.85.72:8000/play/a0lb</code>; Pluto/Rakuten/LG FAST listings</td><td><span class="pill muted">no source</span> Community feed now returns 403 from UK IPs. Only the music spin-offs moved to FAST platforms (Feb&nbsp;2026); main channels remain aerial-only on Freely.</td></tr>
+<tr><td>All remaining stubs (minor FAST + radio)</td><td>Samsung TV Plus GB, Pluto UK, Roku, Plex UK, iptv-org cross-reference</td><td><span class="pill muted">no source</span> No free unencrypted simulcasts identified. Radio has none outside BBC Sounds (login-gated).</td></tr>
+</tbody>
+</table>
+
+<h2>Alternate source registry</h2>
+<p>Verified sources kept on file for future wiring attempts:</p>
+<table>
+<thead><tr><th>Source</th><th>Coverage</th><th>Notes</th></tr></thead>
+<tbody>
+<tr><td><a href="https://i.mjh.nz/SamsungTVPlus/gb.xml">i.mjh.nz SamsungTVPlus gb.xml</a> + BuddyChewChew generated M3U</td><td>Samsung TV Plus GB, 263 channels</td><td>Streams proxied as <code>jmp2.uk/stvp-&lt;id&gt;</code>; regenerated daily. Channels with a <code>license_url</code> in mjh's <code>.channels.json.gz</code> are DRM-locked (Sky Arts/Mix are now in this set).</td></tr>
+<tr><td><a href="https://i.mjh.nz/Plex/gb.xml">i.mjh.nz Plex gb.xml</a></td><td>Plex UK FAST, 362 channels</td><td>Carries Great! Movies/Mystery/Romance clear — fallback if the Amagi URLs die; candidate pool for filling other stubs.</td></tr>
+<tr><td><a href="https://iptv-org.github.io/api/">iptv-org API</a> (<code>streams.json</code>, <code>channels.json</code>)</td><td>Community index, all platforms</td><td>Cross-reference by channel id; many entries stale — always test before wiring.</td></tr>
+<tr><td>Amagi playout URL pattern</td><td>Narrative and other FAST broadcasters</td><td><code>amgXXXXX-narrativeuk-amgXXXXXc{N}-{platform}-gb-{id}.playouts.now.amagi.tv/playlist/amgXXXXX-narrativeuk-{slug}-{lggb|samsunggb|rakutengb}/playlist.m3u8</code>. Host+slug pairing is exact; wrong combos answer HEAD&nbsp;200 with error bodies — always GET and check for <code>#EXTM3U</code>.</td></tr>
+<tr><td>ITVX simulcast endpoint</td><td>All ITV linear channels incl. ITV Quiz</td><td><code>https://simulcast.itv.com/playlist/itvonline/{SLUG}</code>; slugs upper-case, Quiz rides the retired <code>ITVBe</code> slot (mapped in <code>itvx.py CHANNEL_SLUGS</code>). Requires ITVX sign-in; Widevine L3 only.</td></tr>
 </tbody>
 </table>
 
