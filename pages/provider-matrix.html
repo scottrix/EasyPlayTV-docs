@@ -199,6 +199,33 @@ each blocked group:</p>
 </tbody>
 </table>
 
+<h2>Pluto TV direct integration (pluto resolver)</h2>
+<p>Pluto's Feb&nbsp;2026 API migration killed the old anonymous stitcher URLs
+&mdash; they now serve a logo slate for some device profiles. The working
+flow mirrors Pluto's own web player:</p>
+<ol>
+<li><code>GET https://boot.pluto.tv/v4/start?appName=web&amp;deviceType=web&amp;deviceMake=chrome&amp;...</code>
+&mdash; JSON reply contains <code>sessionToken</code>, valid ~24h
+(EasyPlayTV caches 12h in the addon profile)</li>
+<li><code>GET https://cfd-v4-service-channel-stitcher-use1-1.prd.pluto.tv/v2/stitch/hls/channel/{ID}/master.m3u8?includeExtendedEvents=true&amp;masterJWTPassthrough=true&amp;jwt={token}</code></li>
+<li>Clear HLS; play with a browser User-Agent</li>
+</ol>
+<p>Channels carry a <code>pluto_id</code> field and use the
+<code>pluto</code> resolver. 13 channels ride it: That's 60s/70s, QVC2,
+EuroNews, Nosey, 5 Cops, LOVE AFTER LOCKUP, TRUE CRIME UK, EVIDENCE OF EVIL,
+BLOODLINE DETECTIVES, AMC REALITY, CNN Headlines, 5 Trucking Hell.</p>
+<aside>
+<p><strong>tor-specific:</strong> Kodi's c-ares resolver fails on
+<code>siloh-ns1.plutotv.net</code> (Akamai CNAME chain) while system DNS
+resolves it fine &mdash; playback stalls at first segment. Workaround:
+pin <code>217.20.56.143 siloh-ns1.plutotv.net</code> in
+<code>/etc/hosts</code>. Re-check if Pluto rotates the IP.</p>
+<p><strong>SlyGuy Samsung TV Plus addon does NOT unlock DRM channels</strong>
+&mdash; its source removes <code>license_url</code> channels (&ldquo;license
+server refuses&rdquo;). Sky Arts/Mix and Challenge stay BuyDRM KeyOS-locked
+for everyone.</p>
+</aside>
+
 <h2>Alternate source registry</h2>
 <p>Verified sources kept on file for future wiring attempts:</p>
 <table>
