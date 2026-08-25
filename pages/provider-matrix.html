@@ -223,6 +223,25 @@ server refuses&rdquo;). Sky Arts/Mix and Challenge stay BuyDRM KeyOS-locked
 for everyone.</p>
 </aside>
 
+<h2>WATCH FREE UK live streams (Simplestream recipe)</h2>
+<p>The Social Communications channels stream free via the WATCH FREE UK
+Simplestream player. Extraction flow:</p>
+<ol>
+<li><code>GET watchfreeuk.co.uk/live</code> &mdash; scrape
+<code>data-token/-expiry/-userid/-key/-id/-uvid</code> (fresh token per page
+load; uvids: 1312=True Crime, 1313=Evidence of Evil, 1314=Bloodline
+Detectives)</li>
+<li><code>GET mm-v2.simplestream.com/ssmp/api.php?id={id}&amp;env=production</code>
+&mdash; <code>response.api_hostname</code></li>
+<li><code>GET {api_hostname}/streams/api/live/stream/{uvid}?key=..&amp;cc=GB&amp;platform=chrome&amp;url=..&amp;gdpr=1</code>
+with headers <code>Token</code>/<code>Token-Expiry</code>/<code>Userid</code>
+&mdash; JSON <code>response.stream</code> = clear HLS master</li>
+</ol>
+<p><strong>Gotchas:</strong> <code>platform=chrome</code> is required
+(<code>web</code> &rarr; "Invalid Platform"); legacy v1 path shape applies
+unless api_hostname contains "api". Currently unused by the addon (Pluto
+covers these channels) but documented as a fallback.</p>
+
 <h2>Alternate source registry</h2>
 <p>Verified sources kept on file for future wiring attempts:</p>
 <table>
