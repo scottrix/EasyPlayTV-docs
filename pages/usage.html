@@ -71,21 +71,30 @@
 <li>Open <strong>Settings → Add-ons → EasyPlayTV → Configure</strong></li>
 <li>Enable <strong>Do you have a TV license?</strong> to unlock BBC content</li>
 <li>Optionally enter your ITVX credentials (required for VOD), or Channel 4 / My5 credentials (for premium content only)</li>
-<li>Restart Kodi — the background service starts automatically</li>
+<li>If you installed the <strong>Service addon</strong> (Variant B), configure it under <strong>Settings → My add-ons → EasyPlayTV Service → Configure</strong> — PVR enabled, region, device role (master/follower)</li>
+<li>Restart Kodi — the Service addon / standalone service starts automatically</li>
 </ol>
 <p>On first launch, the sync service will begin populating your library. This takes several hours for the full catalogue (6,000+ shows, 120,000+ episodes). Content appears progressively as each provider completes its first sync.</p>
+
+<div class="callout info">
+<span class="callout-title">Playback-only installs (Variant A)</span>
+<p>Without the Service addon or standalone service there is no sync and no PVR. You can still browse and play the live channel grid (and any VOD already in the shared library, if a master exists elsewhere).</p>
+</div>
 
 <h2>Browsing content</h2>
 
 <h3>Live TV</h3>
 <p>Open the addon from <strong>Kodi → Add-ons → EasyPlayTV</strong> → <strong>Live TV</strong>. You'll see a grid of channel icons. Radio channels appear in Kodi's Radio section. Click any channel to start playing.</p>
 
+<h3>Live TV via PVR (Variant B / C)</h3>
+<p>With a Service runtime installed, live channels also appear in Kodi's native <strong>TV</strong> and <strong>Radio</strong> sections with a full EPG guide. The Service addon configures <code>pvr.iptvsimple</code> automatically; the standalone service serves the <code>channels.m3u</code> + <code>epg.xml</code> over HTTP for you to point iptvsimple at.</p>
+
 <h3>Movies &amp; TV Shows</h3>
 <p>After the first sync completes, movies and TV shows appear in Kodi's native <strong>Movies</strong> and <strong>TV Shows</strong> library windows — no need to browse through the addon's menu. They have full metadata: posters, fanart, plots, ratings, and genre tags.</p>
 
 <div class="callout info">
 <span class="callout-title">Provider badges</span>
-<p>All titles are prefixed with a provider badge: <code>[BBC]</code>, <code>[ITVX]</code>, <code>[C4]</code>, <code>[My5]</code>, <code>[STV]</code>, or <code>[BLAZE]</code>. This makes it easy to see which service each show comes from.</p>
+<p>All synced titles are prefixed with a provider badge: <code>[ITVX]</code>, <code>[C4]</code>, <code>[My5]</code>, <code>[STV]</code>, or <code>[BLAZE]</code>. This makes it easy to see which service each show comes from.</p>
 </div>
 
 <h2>Account sign-in</h2>
@@ -115,7 +124,7 @@
 <p>Free-to-air My5 content plays without sign-in. Sign-in is only needed for premium content that requires a My5 account.</p>
 
 <h2>Sync schedule</h2>
-<p>Each provider syncs on a staggered 6-hour schedule:</p>
+<p>The Service runtime (Service addon master or standalone) syncs each provider on a staggered 6-hour schedule:</p>
 <table>
 <thead><tr><th>Provider</th><th>First sync</th><th>Repeat</th></tr></thead>
 <tbody>
@@ -127,11 +136,19 @@
 <tr><td>Blaze</td><td>02:30</td><td>Every 6 hours</td></tr>
 </tbody>
 </table>
+<p>The interval is configurable: <strong>VOD sync hours</strong> in the Service addon settings, or <code>vod_sync.interval_hours</code> in <code>config.yaml</code> for the standalone service.</p>
 
 <h2>Triggering a manual sync</h2>
-<p>If you want to sync a provider immediately (without waiting for the next scheduled slot), you can trigger it via a marker file:</p>
+
+<h3>Service addon (Variant B)</h3>
+<p>The Service addon polls for marker files every 30 seconds and fires the sync when it sees one. Write a marker file in the video addon's profile directory:</p>
 <pre><code>touch /home/osmc/.kodi/userdata/addon_data/plugin.video.easyplaytv/force_sync_c4</code></pre>
-<p>The service polls for marker files every 30 seconds and fires the sync when it sees one. Available providers: <code>bbc</code>, <code>itvx</code>, <code>c4</code>, <code>my5</code>, <code>stv</code>, <code>blaze</code>.</p>
+<p>Available providers: <code>bbc</code>, <code>itvx</code>, <code>c4</code>, <code>my5</code>, <code>stv</code>, <code>blaze</code>, <code>great</code>.</p>
+
+<h3>Standalone service (Variant C)</h3>
+<p>Use the <code>--sync</code> flag to force a single provider sync, or <code>--once-pvr</code> to regenerate the PVR files:</p>
+<pre><code>PYTHONPATH=src ./.venv/bin/python -m easyplaytv_service.main --config config.yaml --sync my5
+PYTHONPATH=src ./.venv/bin/python -m easyplaytv_service.main --config config.yaml --once-pvr</code></pre>
 
 <h2>Troubleshooting</h2>
 <p>See <a href="troubleshooting.html">Troubleshooting</a> for common issues and fixes.</p>

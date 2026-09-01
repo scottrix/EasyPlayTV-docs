@@ -80,9 +80,9 @@
 
 <div class="download-cta" id="download">
   <h3>Download EasyPlayTV</h3>
-  <p>Free and open source. Requires Kodi 19+ (Matrix or later) with inputstream.adaptive.</p>
+  <p>Free and open source. Three packages: the video addon (playback), the Service addon (PVR + library sync inside Kodi), and the standalone service (same runtime, non-Kodi server).</p>
   <div class="dl-links">
-    <a class="dl-btn" href="https://codeberg.org/scottrix/EasyPlayTV/releases/latest" target="_blank" rel="noopener">Download latest release (276 KiB)</a>
+    <a class="dl-btn" href="https://codeberg.org/scottrix/EasyPlayTV/releases/latest" target="_blank" rel="noopener">Download latest release</a>
     <span class="dl-secondary">or browse all releases on <a href="https://codeberg.org/scottrix/EasyPlayTV/releases" target="_blank" rel="noopener">Codeberg</a></span>
   </div>
   <div class="dl-meta">Source code: <a href="https://codeberg.org/scottrix/EasyPlayTV" target="_blank" rel="noopener">Codeberg repo</a> &middot; <span class="pill version">v1.2.0</span></div>
@@ -90,17 +90,29 @@
 
 <h2 id="quick-start">Quick start</h2>
 <ol>
-<li>Download the <a href="https://codeberg.org/scottrix/EasyPlayTV/releases/latest">ZIP file</a> above</li>
+<li>Decide which install variant you need: <a href="pages/installation.html#variant-a">video addon only</a>, <a href="pages/installation.html#variant-b">video addon + Service addon</a>, or <a href="pages/installation.html#variant-c">video addon + standalone service</a></li>
+<li>Download the matching ZIP from the <a href="https://codeberg.org/scottrix/EasyPlayTV/releases/latest">release page</a></li>
 <li>Open Kodi &rarr; Add-ons &rarr; Install from ZIP file &rarr; select the downloaded file</li>
 <li>See <a href="pages/installation.html">Installation</a> for full instructions including MySQL setup</li>
 </ol>
 
+<h2 id="purpose">What each package does</h2>
+<table>
+<thead><tr><th>Package</th><th>Runs on</th><th>Provides</th></tr></thead>
+<tbody>
+<tr><td><code>plugin.video.easyplaytv</code><br>(video addon)</td><td>Every Kodi device</td><td>Live channel grid, stream resolution, account sign-in. Playback only — no service code, no database.</td></tr>
+<tr><td><code>service.easyplaytv</code><br>(Service addon)</td><td>Kodi device(s)</td><td>PVR generation (<code>channels.m3u</code> + <code>epg.xml</code>), <code>pvr.iptvsimple</code> configuration, library sync, HTTP serving of PVR files. Master / follower.</td></tr>
+<tr><td><code>easyplaytv-service</code><br>(standalone service)</td><td>Non-Kodi server</td><td>The same runtime as the Service addon, as a systemd/Docker process driven by <code>config.yaml</code>.</td></tr>
+</tbody>
+</table>
+
 <h2 id="features">Features</h2>
 <ul>
 <li><strong>28+ live TV channels</strong> — BBC, ITV, Channel 4, Channel 5, Sky News, STV, Blaze</li>
+<li><strong>Live TV in Kodi's native TV section</strong> — PVR channel list + EPG guide (via the Service addon or standalone)</li>
 <li><strong>Movies &amp; TV Shows library</strong> — synced to Kodi's library with TMDb metadata (posters, fanart, plots, ratings)</li>
-<li><strong>Provider badges</strong> — <code>[BBC]</code>, <code>[ITVX]</code>, <code>[C4]</code>, <code>[My5]</code>, <code>[STV]</code>, <code>[BLAZE]</code> on all titles</li>
-<li><strong>Background sync</strong> — each provider syncs every 6 hours automatically</li>
+<li><strong>Provider badges</strong> — <code>[ITVX]</code>, <code>[C4]</code>, <code>[My5]</code>, <code>[STV]</code>, <code>[BLAZE]</code> on all synced titles</li>
+<li><strong>Background sync</strong> — each provider syncs every 6 hours automatically (configurable)</li>
 <li><strong>Optional sign-in</strong> — ITVX, Channel 4, and My5 account login for premium content</li>
 </ul>
 
@@ -120,18 +132,20 @@
 
 <h2 id="requirements">Requirements</h2>
 <ul>
-<li>Kodi 19+ (Matrix or later)</li>
+<li>Kodi 19+ (Matrix or later) — video addon</li>
 <li><a href="https://kodi.wiki/view/Add-on:inputstream.adaptive">inputstream.adaptive</a> (for DASH/Widevine playback)</li>
 <li>MySQL database (for library sync — see <a href="pages/installation.html#mysql">MySQL setup</a>)</li>
+<li>Python 3.11+ or a container runtime — standalone service only</li>
 </ul>
 
 <p><a href="pages/installation.html">Full installation instructions &rarr;</a> &nbsp; <a href="pages/usage.html">Usage guide &rarr;</a> &nbsp; <a href="pages/troubleshooting.html">Troubleshooting &rarr;</a></p>
 
 <h2 id="developers">For developers</h2>
-<p>EasyPlayTV is two cooperating processes inside Kodi:</p>
+<p>EasyPlayTV ships as three packages. The video addon handles playback; the Service addon (<code>service.easyplaytv</code>) and the standalone service (<code>easyplaytv-service</code>) both run the same <code>easyplaytv_service</code> runtime for PVR generation and library sync:</p>
 <ol>
-<li><strong>Plugin</strong> — <code>default.py</code>, invoked on every listitem click. Short-lived, stateless: routes URLs to per-provider resolvers.</li>
-<li><strong>Service</strong> — <code>service.py</code>, a long-lived <code>xbmc.Monitor</code> daemon that syncs provider catalogues into the Kodi MySQL database every 6 hours.</li>
+<li><strong>Video addon</strong> — <code>plugin.video.easyplaytv</code>, plugin entry point <code>default.py</code>. Invoked on every listitem click. Short-lived, stateless: routes URLs to per-provider resolvers.</li>
+<li><strong>Service addon</strong> — <code>service.easyplaytv</code>, a Kodi <code>xbmc.service</code> that vendors the runtime and drives it (master/follower, <code>pvr.iptvsimple</code> configuration).</li>
+<li><strong>Standalone service</strong> — <code>easyplaytv-service</code>, the same runtime as a systemd/Docker process, configured via <code>config.yaml</code>.</li>
 </ol>
 
 <table>
@@ -140,35 +154,33 @@
 <tr><td><a href="pages/architecture.html">Architecture</a></td><td>Big picture, data flow between modules, request flow</td></tr>
 <tr><td><a href="pages/db-schema.html">Kodi DB schema</a></td><td>What Kodi tables the addon writes to and why</td></tr>
 <tr><td><a href="pages/provider-matrix.html">Provider matrix</a></td><td>How providers compare (endpoints, auth, DRM, pagination)</td></tr>
-<tr><td><a href="files/default-py.html">default.py</a></td><td>How a button-press turns into DASH playback</td></tr>
-<tr><td><a href="files/service-py.html">service.py</a></td><td>How the 6-hour scheduled sync works</td></tr>
-<tr><td><a href="files/library_sync-py.html">library_sync.py</a></td><td>The sync engine (1.6k LOC — heart of the addon)</td></tr>
+<tr><td><a href="pages/installation.html">Installation</a></td><td>All three install variants (video addon, Service addon, standalone)</td></tr>
+<tr><td><a href="#purpose">Package overview</a></td><td>Which package does what</td></tr>
 </tbody>
 </table>
 
 <h2>Project layout</h2>
 <pre><code>EasyPlayTV/
-├── addon.xml                 — Kodi addon manifest
+├── addon.xml                 — video addon manifest (plugin.video.easyplaytv)
 ├── default.py                — plugin entry point (cached per-call routing)
-├── service.py                — long-lived Kodi Monitor daemon (scheduled syncs)
 ├── README.md
-└── resources/
+├── service.easyplaytv/       — Service addon (separately-shipped zip)
+│   ├── addon.xml             — xbmc.service, depends on plugin.video.easyplaytv
+│   ├── service.py            — thin Kodi service entry
+│   ├── lib/kodi_service.py   — Kodi adapter (master/follower, iptvsimple config)
+│   ├── lib/easyplaytv_service/ — vendored runtime (byte-copy of standalone)
+│   └── lib/pymysql/          — bundled MySQL connector
+├── easyplaytv-service/       — standalone service (separately-shipped)
+│   ├── src/easyplaytv_service/ — canonical runtime (config, database, runtime,
+│   │                             scheduler, http_server, pvr/, vod_sync/)
+│   ├── config.yaml.example
+│   ├── easyplaytv-service.service — systemd unit
+│   ├── Dockerfile
+│   └── tests/
+└── resources/                — video addon resources
     ├── settings.xml          — addon settings UI
     ├── language/en_gb/strings.po
-    └── lib/
-        ├── __init__.py        — shared helpers
-        ├── genres.py          — PROVIDER_LABELS lookup
-        ├── library_sync.py    — sync engine (heart of the addon)
-        ├── strm.py            — URL builders + show fetchers for sync
-        ├── catalog_check.py   — stale title marker
-        │
-        ├── bbc.py / bbc_vod.py     — BBC iPlayer live + VOD
-        ├── itvx.py / itvx_vod.py   — ITVX live + VOD
-        ├── c4.py / c4_vod.py       — Channel 4 live + VOD
-        ├── my5.py / my5_vod.py     — My5 VOD
-        ├── stv.py / stv_vod.py     — STV live + VOD
-        ├── blaze.py / blaze_vod.py — Blaze TV (HTML scraping)
-        └── sky.py                  — Sky News live (Brightcove)
+    └── lib/                  — per-provider resolvers (playback only)
 </code></pre>
 
 <section class="affiliate-section">

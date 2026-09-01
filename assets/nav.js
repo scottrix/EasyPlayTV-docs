@@ -24,14 +24,15 @@ const NAV_GROUPS = [
   {
     title: "Entry points",
     items: [
+      { href: "pages/installation.html", label: "Installation", tags: "install zip manual mysql standalone systemd docker variants" },
       { href: "files/default-py.html",  label: "default.py",   tags: "plugin entry routing resolve_vod" },
-      { href: "files/service-py.html",  label: "service.py",   tags: "scheduled sync daemon monitor" },
+      { href: "files/service-py.html",  label: "service addon", tags: "kodi service xbmc.service pvr epg master follower scheduler daemon" },
     ],
   },
   {
     title: "Core engine",
     items: [
-      { href: "files/library_sync-py.html", label: "library_sync.py", tags: "sync tmdb insert tvshow episode" },
+      { href: "files/library_sync-py.html", label: "library_sync.py", tags: "sync tmdb insert tvshow episode standalone runtime" },
       { href: "files/strm-py.html",          label: "strm.py",          tags: "url builder fetch shows" },
       { href: "files/init-py.html",          label: "__init__.py",     tags: "shared setup_dash_item provider_map" },
       { href: "files/genres-py.html",         label: "genres.py",       tags: "unified genres provider labels" },

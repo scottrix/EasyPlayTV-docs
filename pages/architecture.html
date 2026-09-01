@@ -66,24 +66,15 @@
 <div class="crumbs"><a href="../index.html">Home</a> <span class="sep">/</span> Architecture</div>
 <h1>Architecture</h1>
 
-<p>EasyPlayTV is two cooperating processes inside Kodi:</p>
+<p>EasyPlayTV ships as three packages around a shared runtime:</p>
 <ol>
-<li><strong>Plugin</strong> — <code>default.py</code>, invoked by Kodi on every
-listitem click and every directory navigation. Short-lived, stateless, fast:
-its job is to take a routed URL like <code>?action=resolve_vod&provider=my5&...</code>
-and turn it into a Kodi <code>ListItem</code> with the right
-<a href="../files/init-py.html"><code>setup_dash_item()</code></a> props set.</li>
-<li><strong>Service</strong> — <code>service.py</code>, a long-lived
-<code>xbmc.Monitor</code> daemon that triggers a TMDb-enriched library sync of
-each provider every 6 hours. It writes directly to the Kodi video database
-while Kodi is running.</li>
+<li><strong>Video addon</strong> — <code>plugin.video.easyplaytv</code>, entry point <code>default.py</code>. Invoked by Kodi on every listitem click and every directory navigation. Short-lived, stateless, fast: its job is to take a routed URL like <code>?action=resolve_vod&provider=my5&...</code> and turn it into a Kodi <code>ListItem</code> with the right
+<a href="../files/init-py.html"><code>setup_dash_item()</code></a> props set. Playback and sign-in only — no service code, no database access.</li>
+<li><strong>Service addon</strong> — <code>service.easyplaytv</code>, a long-lived Kodi <code>xbmc.service</code>. Vendors the platform-agnostic <code>easyplaytv_service</code> runtime and drives it via <code>lib/kodi_service.py</code>: generates the PVR files, configures <code>pvr.iptvsimple</code>, serves the PVR files over HTTP (master), or fetches them from a master (follower).</li>
+<li><strong>Standalone service</strong> — <code>easyplaytv-service</code>. The same runtime, run outside Kodi as a systemd/Docker process configured by <code>config.yaml</code>. Writes directly to the Kodi video database while Kodi is running.</li>
 </ol>
 
-<p>Both processes run in the same Kodi Python interpreter (separate
-<code>LanguageInvoker</code> threads), and they share code under
-<code>resources/lib/</code>. The shared modules split cleanly between
-"things the plugin needs" (fast path, UI listing, DASH setup) and "things the
-service needs" (slow path, network fetches, TMDb lookups, DB inserts).</p>
+<p>The <strong>Service addon and the standalone share the same <code>easyplaytv_service</code> runtime</strong> — the standalone is canonical, and the Service addon vendors a byte-copy at build time. Inside Kodi, the plugin and the runtime run in the same Kodi Python interpreter (separate <code>LanguageInvoker</code> threads); the video addon's <code>resources/lib/</code> holds "things the plugin needs" (fast path, UI listing, DASH setup), while the runtime holds "things the service needs" (slow path, network fetches, TMDb lookups, DB inserts).</p>
 
 <h2>Request flow</h2>
 
@@ -151,38 +142,46 @@ populate the Kodi DB. A successful sync concludes with
 and a targeted <code>UpdateLibrary(video, ...)</code> so Kodi's window refreshes.</p>
 
 <h2>Module dependency graph</h2>
-<pre><code>                default.py                       service.py
-                     │                                  │
-         ┌───────┬──┴──┴───────┐                       │
-         │       │             │                       ▼
-    livestream  resolve_vod   sync action    resources.lib.library_sync
-         │       │             │                       │
-         │       │             │                       ▼
-         │       │             │                  strm.py (URL builders +
-         │       │             │                       show fetchers for sync)
-         │       │             │
-         └───┬───┴──────┬──────┴──►  resources.lib.__init__
-             │          │              (setup_dash_item, load_provider_map, get_ua)
-             │          │
-             ▼          ▼
-        per-provider live modules         per-provider VOD modules
-        bbc.py / itvx.py / c4.py /      my5.py / c4.py / itvx.py /
-        stv.py / blaze.py / sky.py      bbc.py / stv_vod.py / blaze_vod.py
+<pre><code>   plugin.video.easyplaytv (video addon)      service.easyplaytv / easyplaytv-service
+                 default.py                              lib/kodi_service.py (or main.py)
+                     │                                            │
+          ┌───────┬──┴──┴───────┐                       easyplaytv_service.runtime
+          │       │             │                     ┌───────────┬───────────┬────────────┐
+     livestream resolve_vod  login actions            │           │           │            │
+          │       │             │                     │           ▼           ▼            │
+          │       │             │                pvr_manager      scheduler   http_server
+          │       │             │                     │           │
+          │       │             │                     ▼           ▼
+          └───┬───┴──────┬──────┴──►  resources.lib.__init__   vod_sync.library_sync
+              │          │             (setup_dash_item, load_provider_map, get_ua)
+              ▼          ▼                                            │
+    per-provider live modules    per-provider VOD modules             ▼
+    bbc.py / itvx.py / c4.py /   (video addon plays them        vod_sync/providers/
+    stv.py / blaze.py / sky.py /   at resolve time)             bbc_vod / itvx_vod / c4_vod /
+    pluto.py / greatplayer.py    bbc_vod / itvx_vod / c4_vod /  my5_vod / stv_vod / blaze_vod /
+                                 my5_vod / stv_vod / blaze_vod / uktv_vod / greatplayer
+                                 uktv_vod
 </code></pre>
 
-<h2>State files in <code>addon_data/plugin.video.easyplaytv/</code></h2>
+<h2>State files in <code>addon_data/</code></h2>
+<p>The service runtime keeps its working state in the video addon's profile
+(<code>addon_data/plugin.video.easyplaytv/</code>), and PVR output in the
+Service addon's profile (<code>addon_data/service.easyplaytv/pvr/</code>).
+Shared files:</p>
 <table>
 <thead><tr><th>File</th><th>Writer</th><th>Reader</th><th>Purpose</th></tr></thead>
 <tbody>
-<tr><td><code>provider_map.json</code></td><td>library_sync.py</td><td>library_sync.py, default.py</td><td>Map safe-title → provider label + f_name/pid/slug for cross-reference. Used to prefix rows during sync when their source catalogue omits the provider tag.</td></tr>
-<tr><td><code>library_sync_state.json</code></td><td>library_sync.py</td><td>library_sync.py</td><td>Movie sync state (synced_titles + last_sync timestamps).</td></tr>
-<tr><td><code>series_sync_state.json</code></td><td>library_sync.py</td><td>library_sync.py</td><td>Series sync state — skips shows already synced in the last 6h window (avoid hammering TMDb).</td></tr>
+<tr><td><code>provider_map.json</code></td><td>runtime (vod_sync)</td><td>runtime, default.py</td><td>Map safe-title → provider label + f_name/pid/slug for cross-reference. Used to prefix rows during sync when their source catalogue omits the provider tag.</td></tr>
+<tr><td><code>library_sync_state.json</code></td><td>runtime (vod_sync)</td><td>runtime (vod_sync)</td><td>Movie sync state (synced_titles + last_sync timestamps).</td></tr>
+<tr><td><code>series_sync_state.json</code></td><td>runtime (vod_sync)</td><td>runtime (vod_sync)</td><td>Series sync state — skips shows already synced in the last 6h window (avoid hammering TMDb).</td></tr>
 <tr><td><code>stale_titles.json</code></td><td>catalog_check.py</td><td>default.py</td><td>Titles marked stale on a playback 404 (per-title marker so the user knows which episodes have gone away) — written by <code>default.py:_resolve_vod</code>'s 404 handler, read on each resolve to suppress retries.</td></tr>
 <tr><td><code>itv_session</code></td><td>itvx.py</td><td>itvx.py</td><td>OAuth access + refresh tokens for ITVX (required for VOD playback of any ITV channel content).</td></tr>
 <tr><td><code>my5_session</code></td><td>my5.py</td><td>my5.py</td><td>JSON dict holding the AWS Cognito <code>{access_token, id_token, refresh_token, expires_at, email}</code> for optional Channel5 user sign-in. Attached as <code>Authorization: Bearer …</code> on Cassie requests when present. Free-to-air content plays anonymously when absent or expired.</td></tr>
-<tr><td><code>itvx_cookies.pkl</code></td><td>itvx_vod.py</td><td>itvx_vod.py</td><td>Pickled <code>http.cookiejar</code> for the itvx.com catalog fetches (compiled by the scraper behind the scenes).</td></tr>
-<tr><td><code>stv_cache/</code></td><td>stv_vod.py</td><td>stv_vod.py</td><td>Per-show JSON responses cached to avoid re-downloading 535 catalog pages every sync.</td></tr>
-<tr><td><code>settings.xml</code></td><td>Kodi settings UI</td><td>all via <code>_ADDON.getSetting*</code></td><td>db_source (0=master/1=follower), max_resolution, itvx_email/password, my5_email/password, has_tv_license.</td></tr>
+<tr><td><code>itvx_cookies.pkl</code></td><td>runtime (itvx_vod)</td><td>runtime (itvx_vod)</td><td>Pickled <code>http.cookiejar</code> for the itvx.com catalog fetches (compiled by the scraper behind the scenes).</td></tr>
+<tr><td><code>stv_cache/</code></td><td>runtime (stv_vod)</td><td>runtime (stv_vod)</td><td>Per-show JSON responses cached to avoid re-downloading 535 catalog pages every sync.</td></tr>
+<tr><td><code>pvr/channels.m3u</code>, <code>pvr/epg.xml</code></td><td>runtime (pvr_manager)</td><td>pvr.iptvsimple</td><td>Generated channel list + EPG. Written to the Service addon's profile when running inside Kodi (<code>addon_data/service.easyplaytv/pvr/</code>), or to <code>paths.pvr_dir</code> for the standalone.</td></tr>
+<tr><td><code>force_sync_&lt;provider&gt;</code></td><td>user/scripts</td><td>service (marker files)</td><td>Marker files in the video addon's profile that request an immediate sync for a single provider.</td></tr>
+<tr><td><code>settings.xml</code></td><td>Kodi settings UI</td><td>all via <code>getSetting*</code></td><td>Video addon: max_resolution, itvx/my5 email+password, has_tv_license. Service addon: pvr_enabled, pvr_refresh_hours, serve_http, pvr_region, db_source (0=master/1=follower), pvr_fetch_enabled, pvr_fetch_url, vod_sync_hours.</td></tr>
 </tbody>
 </table>
 
@@ -201,11 +200,10 @@ object per-thread; never pass a connection into a worker thread.</p>
 <span class="callout-title">RunPlugin via JSON-RPC doesn't deliver plugin query-string params</span>
 <p>Kodi 21's <code>Addons.ExecuteAddon</code> fires up the addon via the
 <code>addon.xml</code> entry-point but does not forward query-string
-parameters. That's why the addon ships <code>service.py</code> as a
-<code>xbmc.Monitor</code> service that polls marker files
-(<code>force_sync_<provider></code>) in
+parameters. That's why the Service runtime polls marker files
+(<code>force_sync_&lt;provider&gt;</code>) in the video addon's
 <code>addon_data/</code> — to trigger targeted syncs from an external
-JSON-RPC client, write the marker file; <code>service.py</code>'s polling
+JSON-RPC client, write the marker file; the service addon's polling
 loop picks it up within 30&nbsp;s.</p>
 </div>
 
@@ -218,10 +216,10 @@ un-prefixed duplicate rows from the bare <code>plugin://plugin.video.easyplaytv/
 filenames (or from any disk folder the addon has touched), repeatedly
 on every library refresh — colliding with the addon's
 <code>[ITVX] Ackley Bridge</code> prefix convention.</p>
-<p>The addon writes rows directly into the Kodi tables via SQL
-(<code>library_sync._insert_tvshow</code> et al.) instead of relying on
+<p>The runtime writes rows directly into the Kodi tables via SQL
+(<code>vod_sync/library_sync._insert_tvshow</code> et al.) instead of relying on
 Kodi's scanner. To prevent the Kodi scanner from creating duplicates
-on top of those rows, the addon sets <code>exclude=1</code> on two
+on top of those rows, the runtime sets <code>exclude=1</code> on two
 <code>path</code> rows in <a href="db-schema.html"><code>ensure_series_path_config</code></a>:
 the plugin-source path row (<code>idPath=485</code>,
 <code>plugin://plugin.video.easyplaytv/</code>) and the on-disk Series

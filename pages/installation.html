@@ -66,24 +66,86 @@
 <div class="crumbs"><a href="../index.html">Home</a> <span class="sep">/</span> Installation</div>
 <h1>Installation</h1>
 
+<p>EasyPlayTV ships as three packages. Depending on how much you want, install one or more of them:</p>
+
+<table>
+<thead><tr><th>Package</th><th>Install on</th><th>Adds</th></tr></thead>
+<tbody>
+<tr><td><code>plugin.video.easyplaytv</code> — video addon</td><td>Every Kodi device</td><td>Playback, channel grid, sign-in</td></tr>
+<tr><td><code>service.easyplaytv</code> — Service addon</td><td>Kodi device(s)</td><td>PVR + EPG, library sync, HTTP serving (master/follower)</td></tr>
+<tr><td><code>easyplaytv-service</code> — standalone</td><td>Non-Kodi server</td><td>The same Service runtime via systemd/Docker + <code>config.yaml</code></td></tr>
+</tbody>
+</table>
+
 <h2>Requirements</h2>
 <ul>
-<li><strong>Kodi 19+</strong> (Matrix or later, Python 3)</li>
+<li><strong>Kodi 19+</strong> (Matrix or later, Python 3) — video addon</li>
 <li><strong>inputstream.adaptive</strong> — required for DASH/Widevine stream playback (install from Kodi repository)</li>
-<li><strong>MySQL database</strong> — for library sync across multiple devices (reads connection details from <code>advancedsettings.xml</code>)</li>
+<li><strong>MySQL database</strong> — for library sync across multiple devices (reads connection details from <code>advancedsettings.xml</code>; the standalone service reads them from <code>config.yaml</code> instead)</li>
+<li><strong>Python 3.11+</strong> or a container runtime — standalone service only</li>
 </ul>
 
 <div class="callout info">
-<span class="callout-title">MySQL is optional for single-device use</span>
+<span class="callout-title">MySQL is optional for playback-only use</span>
 <p>EasyPlayTV works without a MySQL database — you can still browse live TV and play content. MySQL is only needed if you want the Movies and TV Shows library sync, or if you want to share the library across multiple Kodi devices (master/follower mode).</p>
 </div>
 
-<h2>From ZIP (recommended)</h2>
+<h2 id="variant-a">Variant A — playback only (video addon)</h2>
+<p>Install just the video addon for the live channel grid and direct stream resolution. No library sync, no PVR. VOD still plays from URLs the service has previously written into the database.</p>
 <ol>
-<li>Download the latest <code>plugin.video.easyplaytv.zip</code> release</li>
+<li>Download <code>plugin.video.easyplaytv.zip</code> from the <a href="https://codeberg.org/scottrix/EasyPlayTV/releases/latest">latest release</a></li>
 <li>In Kodi: <strong>Settings → Add-ons → Install from zip file</strong> → select the downloaded zip</li>
-<li>Restart Kodi to activate the background sync service</li>
+<li>Open <strong>Settings → Add-ons → EasyPlayTV → Configure</strong> and set your preferences (see <a href="usage.html">Usage</a>)</li>
 </ol>
+
+<h2 id="variant-b">Variant B — full Kodi experience (video addon + Service addon)</h2>
+<p>Install both the video addon and the Service addon on the same Kodi device. The Service addon runs a background service that generates the PVR channel list + EPG, configures <code>pvr.iptvsimple</code>, and syncs the VOD catalogue into your library.</p>
+<ol>
+<li>Follow Variant A on every Kodi device</li>
+<li>Set up the <a href="#mysql">MySQL video database</a> shared by all devices</li>
+<li>On the <strong>master</strong> device: <strong>Settings → Add-ons → Install from zip file</strong> → select <code>service.easyplaytv.zip</code></li>
+<li>On <strong>follower</strong> devices: also install <code>service.easyplaytv.zip</code>, then set <strong>Device role → Follow master over HTTP</strong> and a <strong>PVR fetch URL</strong> (e.g. <code>http://master-ip:8899</code>) in the Service addon settings</li>
+<li>Restart Kodi on the master — the service generates <code>channels.m3u</code>/<code>epg.xml</code>, configures <code>pvr.iptvsimple</code>, and starts the first VOD sync</li>
+</ol>
+
+<div class="callout warn">
+<span class="callout-title">Service addon requires the video addon</span>
+<p><code>service.easyplaytv</code> declares a dependency on <code>plugin.video.easyplaytv</code> ≥ 1.2.0 — it does not ship its own playback code. Install both on the same device. The standalone service has no such dependency.</p>
+</div>
+
+<h2 id="variant-c">Variant C — standalone service on a server</h2>
+<p>Run the Service runtime on a non-Kodi server (the MySQL host is the natural choice) and keep Kodi devices on the video addon only.</p>
+
+<h3>Install (on the server)</h3>
+<pre><code>git clone ssh://git@codeberg.org/scottrix/EasyPlayTV.git
+cd EasyPlayTV/easyplaytv-service
+python3 -m venv .venv
+./.venv/bin/pip install -r requirements.txt
+cp config.yaml.example config.yaml   # edit: database, credentials, region
+PYTHONPATH=src ./.venv/bin/python -m easyplaytv_service.main --config config.yaml</code></pre>
+
+<h3>Run as a systemd service</h3>
+<p>Copy <code>easyplaytv-service.service</code> to <code>~/.config/systemd/user/</code> (or <code>/etc/systemd/system/</code>), adjust the <code>ExecStart</code> paths, then:</p>
+<pre><code>systemctl daemon-reload
+systemctl --user enable --now easyplaytv-service.service</code></pre>
+
+<h3>Run in Docker</h3>
+<pre><code>cd EasyPlayTV/easyplaytv-service
+docker build -t easyplaytv-service .
+docker run -d --name easyplaytv-service --restart unless-stopped \
+  -p 8899:8899 \
+  -v /path/to/config.yaml:/config/config.yaml \
+  easyplaytv-service</code></pre>
+
+<h3>Point Kodi at the server</h3>
+<p>The service serves <code>channels.m3u</code> and <code>epg.xml</code> on <code>http://&lt;server&gt;:8899</code>. In Kodi, install <code>pvr.iptvsimple</code> and set its M3U URL and EPG URL to those paths — or install the Service addon in follower mode with <code>http://&lt;server&gt;:8899</code> as the PVR fetch URL, which configures iptvsimple for you on every restart.</p>
+
+<h3>One-shot CLI flags</h3>
+<pre><code># Regenerate PVR files once and exit
+PYTHONPATH=src ./.venv/bin/python -m easyplaytv_service.main --config config.yaml --once-pvr
+
+# Force a single VOD sync for one provider and exit
+PYTHONPATH=src ./.venv/bin/python -m easyplaytv_service.main --config config.yaml --sync c4</code></pre>
 
 <h2>Manual install</h2>
 <p>Copy the <code>plugin.video.easyplaytv</code> folder to your Kodi addons directory and restart Kodi:</p>
@@ -92,11 +154,12 @@
 <h2>Post-install setup</h2>
 <ol>
 <li><strong>Install inputstream.adaptive</strong> from the Kodi add-on repository if not already present</li>
-<li><strong>Configure the addon</strong> — open <strong>Settings → Add-ons → EasyPlayTV → Configure</strong> (see <a href="usage.html">Usage</a>)</li>
-<li><strong>Restart Kodi</strong> — the background service will begin syncing content on its next scheduled interval</li>
+<li><strong>Configure the video addon</strong> — open <strong>Settings → Add-ons → EasyPlayTV → Configure</strong> (see <a href="usage.html">Usage</a>)</li>
+<li><strong>Configure the Service addon</strong> (Variant B) — open <strong>Settings → My add-ons → EasyPlayTV Service → Configure</strong> for PVR and sync settings</li>
+<li><strong>Restart Kodi</strong> (Variant B) — the service will generate the PVR files and begin syncing content on its next scheduled interval</li>
 </ol>
 
-<h2>MySQL database setup (for library sync)</h2>
+<h2 id="mysql">MySQL database setup (for library sync)</h2>
 <p>If you want the Movies and TV Shows library sync, ensure <code>advancedsettings.xml</code> contains your MySQL connection details:</p>
 <pre><code>&lt;advancedsettings&gt;
   &lt;videodatabase&gt;
@@ -109,15 +172,15 @@
   &lt;/videodatabase&gt;
 &lt;/advancedsettings&gt;</code></pre>
 
-<p>If no <code>advancedsettings.xml</code> is found, the addon falls back to built-in defaults (the same host/port/user/pass shown above). The addon auto-detects the versioned database name (e.g. <code>MyVideos131</code>).</p>
+<p>If no <code>advancedsettings.xml</code> is found, the service addon falls back to built-in defaults (the same host/port/user/pass shown above). The addon auto-detects the versioned database name (e.g. <code>MyVideos131</code>). The standalone service takes its database settings from <code>config.yaml</code> instead.</p>
 
 <h2>Master / Follower mode</h2>
 <p>For sharing a library across multiple devices:</p>
 <ul>
-<li><strong>Master</strong> — one device runs the sync service and writes to the shared MySQL database</li>
-<li><strong>Follower</strong> — other devices read from the same database (no sync runs on them)</li>
+<li><strong>Master</strong> — one device runs the Service runtime (Service addon or standalone) and writes to the shared MySQL database, generates the PVR files, and serves them over HTTP</li>
+<li><strong>Follower</strong> — other devices read from the same database (no sync runs on them) and fetch the master's PVR files over HTTP</li>
 </ul>
-<p>Set the <strong>Device Role</strong> in the addon settings (Sync category) to choose master or follower.</p>
+<p>With the Service addon, set the <strong>Device role</strong> in the Service addon settings (Sync category) to choose master or follower. With the standalone service, run it once (it acts as the master) and point followers at its HTTP URL.</p>
 
 <h2>OSMC / Raspberry Pi notes</h2>
 
