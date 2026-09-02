@@ -75,8 +75,13 @@
 </div>
 
 <h2>Role</h2>
-<p>Long-running <code>xbmc.Monitor</code> daemon. On startup checks if this
-device is the master, then schedules one sync per provider at a staggered
+<p>Long-running <code>xbmc.Monitor</code> daemon. This is the <strong>server-role</strong>
+history page for the original single-addon service (removed in the 3-package
+split). Today the server logic lives in <code>service.easyplaytv/lib/kodi_service.py</code>
+(and the standalone <code>easyplaytv-service</code> runtime); there is no
+follower/device-role distinction anymore — the Service addon is always a server,
+and client boxes point their video addon <em>PVR server URL</em> at it.
+On startup it schedules one sync per provider at a staggered
 6-hour cadence and polls a folder of "force-sync" marker files every 30 s
 so manual triggers can fire out of schedule.</p>
 
@@ -103,12 +108,13 @@ modest. Each provider's TMDb lookup is independent so they don't compound.</p>
 
 <div class="fn">
 <span class="fn-sig">__init__() · lines 22–45</span>
-<p>Reads <code>db_source</code> addon setting (via
-<code>resources.lib.is_master()</code>) — in <em>follower mode</em> the
-daemon logs and returns without scheduling syncs (libraries are written by
-the master box only; followers just read the shared MariaDB). In
-<em>master mode</em> it initialises <code>self._next_sync[provider]</code>
-for every provider to the next future slot in the day.</p>
+<p>Legacy master/follower section — removed in the 3-package split. The old
+code read <code>db_source</code> via <code>resources.lib.is_master()</code>;
+in <em>follower mode</em> the daemon logged and returned without scheduling
+syncs (libraries are written by the server box only; clients just read the
+shared MariaDB). In <em>master mode</em> it initialised
+<code>self._next_sync[provider]</code> for every provider to the next future
+slot in the day. The Service addon now always runs as a server.</p>
 <div class="callout warn"><span class="callout-title">BBC respect TV-license setting</span>
 <p>If <code>has_tv_license</code> is false, BBC is <em>not</em> added to
 <code>self._next_sync</code>; the loop at line 110 then skips it. This is

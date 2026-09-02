@@ -71,14 +71,15 @@
 <li>Open <strong>Settings → Add-ons → EasyPlayTV → Configure</strong></li>
 <li>Enable <strong>Do you have a TV license?</strong> to unlock BBC content</li>
 <li>Optionally enter your ITVX credentials (required for VOD), or Channel 4 / My5 credentials (for premium content only)</li>
-<li>If you installed the <strong>Service addon</strong> (Variant B), configure it under <strong>Settings → My add-ons → EasyPlayTV Service → Configure</strong> — PVR enabled, region, device role (master/follower)</li>
+<li>If this box is a <strong>client</strong> of a PVR server, enable <strong>PVR integration</strong> and set <strong>PVR server URL</strong> (e.g. <code>http://server-ip:8899</code>)</li>
+<li>If you installed the <strong>Service addon</strong> (Variant B server), configure it under <strong>Settings → My add-ons → EasyPlayTV Service → Configure</strong> — PVR enabled, region, VOD sync hours (Service addon is always the server; there is no device-role setting)</li>
 <li>Restart Kodi — the Service addon / standalone service starts automatically</li>
 </ol>
 <p>On first launch, the sync service will begin populating your library. This takes several hours for the full catalogue (6,000+ shows, 120,000+ episodes). Content appears progressively as each provider completes its first sync.</p>
 
 <div class="callout info">
 <span class="callout-title">Playback-only installs (Variant A)</span>
-<p>Without the Service addon or standalone service there is no sync and no PVR. You can still browse and play the live channel grid (and any VOD already in the shared library, if a master exists elsewhere).</p>
+<p>Without the Service addon or standalone service there is no sync on this box. You can still browse and play the live channel grid (and any VOD already in the shared library, if a server exists elsewhere). If a server exists, enable <strong>PVR integration</strong> in the video addon settings to get Live TV via PVR too.</p>
 </div>
 
 <h2>Browsing content</h2>
@@ -87,7 +88,7 @@
 <p>Open the addon from <strong>Kodi → Add-ons → EasyPlayTV</strong> → <strong>Live TV</strong>. You'll see a grid of channel icons. Radio channels appear in Kodi's Radio section. Click any channel to start playing.</p>
 
 <h3>Live TV via PVR (Variant B / C)</h3>
-<p>With a Service runtime installed, live channels also appear in Kodi's native <strong>TV</strong> and <strong>Radio</strong> sections with a full EPG guide. The Service addon configures <code>pvr.iptvsimple</code> automatically; the standalone service serves the <code>channels.m3u</code> + <code>epg.xml</code> over HTTP for you to point iptvsimple at.</p>
+<p>With a Service runtime installed on a server box, live channels appear in Kodi's native <strong>TV</strong> and <strong>Radio</strong> sections with a full EPG guide. The server's Service addon configures its own <code>pvr.iptvsimple</code> automatically; the standalone service serves the <code>channels.m3u</code> + <code>epg.xml</code> over HTTP. Client boxes configure their <code>pvr.iptvsimple</code> by enabling <strong>PVR integration</strong> in the video addon settings and pointing <strong>PVR server URL</strong> at the server.</p>
 
 <h3>Movies &amp; TV Shows</h3>
 <p>After the first sync completes, movies and TV shows appear in Kodi's native <strong>Movies</strong> and <strong>TV Shows</strong> library windows — no need to browse through the addon's menu. They have full metadata: posters, fanart, plots, ratings, and genre tags.</p>
@@ -124,7 +125,7 @@
 <p>Free-to-air My5 content plays without sign-in. Sign-in is only needed for premium content that requires a My5 account.</p>
 
 <h2>Sync schedule</h2>
-<p>The Service runtime (Service addon master or standalone) syncs each provider on a staggered 6-hour schedule:</p>
+<p>The Service runtime (server) syncs each provider on a staggered 6-hour schedule:</p>
 <table>
 <thead><tr><th>Provider</th><th>First sync</th><th>Repeat</th></tr></thead>
 <tbody>

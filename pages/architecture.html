@@ -70,7 +70,7 @@
 <ol>
 <li><strong>Video addon</strong> — <code>plugin.video.easyplaytv</code>, entry point <code>default.py</code>. Invoked by Kodi on every listitem click and every directory navigation. Short-lived, stateless, fast: its job is to take a routed URL like <code>?action=resolve_vod&provider=my5&...</code> and turn it into a Kodi <code>ListItem</code> with the right
 <a href="../files/init-py.html"><code>setup_dash_item()</code></a> props set. Playback and sign-in only — no service code, no database access.</li>
-<li><strong>Service addon</strong> — <code>service.easyplaytv</code>, a long-lived Kodi <code>xbmc.service</code>. Vendors the platform-agnostic <code>easyplaytv_service</code> runtime and drives it via <code>lib/kodi_service.py</code>: generates the PVR files, configures <code>pvr.iptvsimple</code>, serves the PVR files over HTTP (master), or fetches them from a master (follower).</li>
+<li><strong>Service addon</strong> — <code>service.easyplaytv</code>, a long-lived Kodi <code>xbmc.service</code> (server role). Vendors the platform-agnostic <code>easyplaytv_service</code> runtime and drives it via <code>lib/kodi_service.py</code>: generates the PVR files, configures <code>pvr.iptvsimple</code>, and serves the PVR files over HTTP for client boxes.</li>
 <li><strong>Standalone service</strong> — <code>easyplaytv-service</code>. The same runtime, run outside Kodi as a systemd/Docker process configured by <code>config.yaml</code>. Writes directly to the Kodi video database while Kodi is running.</li>
 </ol>
 
@@ -181,7 +181,7 @@ Shared files:</p>
 <tr><td><code>stv_cache/</code></td><td>runtime (stv_vod)</td><td>runtime (stv_vod)</td><td>Per-show JSON responses cached to avoid re-downloading 535 catalog pages every sync.</td></tr>
 <tr><td><code>pvr/channels.m3u</code>, <code>pvr/epg.xml</code></td><td>runtime (pvr_manager)</td><td>pvr.iptvsimple</td><td>Generated channel list + EPG. Written to the Service addon's profile when running inside Kodi (<code>addon_data/service.easyplaytv/pvr/</code>), or to <code>paths.pvr_dir</code> for the standalone.</td></tr>
 <tr><td><code>force_sync_&lt;provider&gt;</code></td><td>user/scripts</td><td>service (marker files)</td><td>Marker files in the video addon's profile that request an immediate sync for a single provider.</td></tr>
-<tr><td><code>settings.xml</code></td><td>Kodi settings UI</td><td>all via <code>getSetting*</code></td><td>Video addon: max_resolution, itvx/my5 email+password, has_tv_license. Service addon: pvr_enabled, pvr_refresh_hours, serve_http, pvr_region, db_source (0=master/1=follower), pvr_fetch_enabled, pvr_fetch_url, vod_sync_hours.</td></tr>
+<tr><td><code>settings.xml</code></td><td>Kodi settings UI</td><td>all via <code>getSetting*</code></td><td>Video addon: max_resolution, itvx/my5 email+password, has_tv_license, pvr_enabled, pvr_fetch_url (client PVR → points <code>pvr.iptvsimple</code> at a server). Service addon: pvr_enabled, pvr_refresh_hours, serve_http, pvr_region, vod_sync_hours (server role only — no device-role / fetch settings).</td></tr>
 </tbody>
 </table>
 

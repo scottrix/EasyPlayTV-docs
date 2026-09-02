@@ -72,7 +72,7 @@
 <thead><tr><th>Package</th><th>Install on</th><th>Adds</th></tr></thead>
 <tbody>
 <tr><td><code>plugin.video.easyplaytv</code> — video addon</td><td>Every Kodi device</td><td>Playback, channel grid, sign-in</td></tr>
-<tr><td><code>service.easyplaytv</code> — Service addon</td><td>Kodi device(s)</td><td>PVR + EPG, library sync, HTTP serving (master/follower)</td></tr>
+<tr><td><code>service.easyplaytv</code> — Service addon</td><td>The server Kodi device</td><td>PVR + EPG, library sync, HTTP serving of PVR files</td></tr>
 <tr><td><code>easyplaytv-service</code> — standalone</td><td>Non-Kodi server</td><td>The same Service runtime via systemd/Docker + <code>config.yaml</code></td></tr>
 </tbody>
 </table>
@@ -87,25 +87,26 @@
 
 <div class="callout info">
 <span class="callout-title">MySQL is optional for playback-only use</span>
-<p>EasyPlayTV works without a MySQL database — you can still browse live TV and play content. MySQL is only needed if you want the Movies and TV Shows library sync, or if you want to share the library across multiple Kodi devices (master/follower mode).</p>
+<p>EasyPlayTV works without a MySQL database — you can still browse live TV and play content. MySQL is only needed if you want the Movies and TV Shows library sync, or if you want to share the library across multiple Kodi devices (server/client mode).</p>
 </div>
 
 <h2 id="variant-a">Variant A — playback only (video addon)</h2>
-<p>Install just the video addon for the live channel grid and direct stream resolution. No library sync, no PVR. VOD still plays from URLs the service has previously written into the database.</p>
+<p>Install the video addon for the live channel grid and direct stream resolution, on every Kodi device. This box runs no service and does no sync, but can still get Live TV via PVR by pointing <code>pvr.iptvsimple</code> at any EasyPlayTV server's files (step 4).</p>
 <ol>
 <li>Download <code>plugin.video.easyplaytv.zip</code> from the <a href="https://codeberg.org/scottrix/EasyPlayTV/releases/latest">latest release</a></li>
 <li>In Kodi: <strong>Settings → Add-ons → Install from zip file</strong> → select the downloaded zip</li>
 <li>Open <strong>Settings → Add-ons → EasyPlayTV → Configure</strong> and set your preferences (see <a href="usage.html">Usage</a>)</li>
+<li>Optional — Live TV via another box's server: enable <strong>PVR integration</strong> and set <strong>PVR server URL</strong> (e.g. <code>http://server-ip:8899</code>). On next addon open the addon points <code>pvr.iptvsimple</code> at that server's <code>channels.m3u</code>/<code>epg.xml</code>, and live channels appear in Kodi's native TV / Radio sections.</li>
 </ol>
 
-<h2 id="variant-b">Variant B — full Kodi experience (video addon + Service addon)</h2>
-<p>Install both the video addon and the Service addon on the same Kodi device. The Service addon runs a background service that generates the PVR channel list + EPG, configures <code>pvr.iptvsimple</code>, and syncs the VOD catalogue into your library.</p>
+<h2 id="variant-b">Variant B — full Kodi experience (video addon + Service addon, server role)</h2>
+<p>Install the video addon on every Kodi device. Install the Service addon <strong>only on the box that acts as the server</strong>: it runs a background service that generates the PVR channel list + EPG, configures <code>pvr.iptvsimple</code>, syncs the VOD catalogue into your library, and optionally serves the PVR files over HTTP. Client boxes stay on the video addon alone and configure client PVR (Variant A step 4).</p>
 <ol>
 <li>Follow Variant A on every Kodi device</li>
 <li>Set up the <a href="#mysql">MySQL video database</a> shared by all devices</li>
-<li>On the <strong>master</strong> device: <strong>Settings → Add-ons → Install from zip file</strong> → select <code>service.easyplaytv.zip</code></li>
-<li>On <strong>follower</strong> devices: also install <code>service.easyplaytv.zip</code>, then set <strong>Device role → Follow master over HTTP</strong> and a <strong>PVR fetch URL</strong> (e.g. <code>http://master-ip:8899</code>) in the Service addon settings</li>
-<li>Restart Kodi on the master — the service generates <code>channels.m3u</code>/<code>epg.xml</code>, configures <code>pvr.iptvsimple</code>, and starts the first VOD sync</li>
+<li>On the <strong>server</strong> device: <strong>Settings → Add-ons → Install from zip file</strong> → select <code>service.easyplaytv.zip</code></li>
+<li>On <strong>client</strong> boxes, enable <strong>PVR integration</strong> in the video addon settings and set <strong>PVR server URL</strong> to <code>http://&lt;server-ip&gt;:8899</code> so their <code>pvr.iptvsimple</code> pulls the same channels + EPG over HTTP</li>
+<li>Restart Kodi on the server — the service generates <code>channels.m3u</code>/<code>epg.xml</code>, configures <code>pvr.iptvsimple</code>, and starts the first VOD sync</li>
 </ol>
 
 <div class="callout warn">
@@ -138,7 +139,7 @@ docker run -d --name easyplaytv-service --restart unless-stopped \
   easyplaytv-service</code></pre>
 
 <h3>Point Kodi at the server</h3>
-<p>The service serves <code>channels.m3u</code> and <code>epg.xml</code> on <code>http://&lt;server&gt;:8899</code>. In Kodi, install <code>pvr.iptvsimple</code> and set its M3U URL and EPG URL to those paths — or install the Service addon in follower mode with <code>http://&lt;server&gt;:8899</code> as the PVR fetch URL, which configures iptvsimple for you on every restart.</p>
+<p>The service serves <code>channels.m3u</code> and <code>epg.xml</code> on <code>http://&lt;server&gt;:8899</code>. On each Kodi device, open the <strong>video addon</strong> settings, enable <strong>PVR integration</strong>, and set <strong>PVR server URL</strong> to <code>http://&lt;server&gt;:8899</code>. The addon configures <code>pvr.iptvsimple</code> for you on addon open (no Service addon needed on that box).</p>
 
 <h3>One-shot CLI flags</h3>
 <pre><code># Regenerate PVR files once and exit
@@ -174,13 +175,13 @@ PYTHONPATH=src ./.venv/bin/python -m easyplaytv_service.main --config config.yam
 
 <p>If no <code>advancedsettings.xml</code> is found, the service addon falls back to built-in defaults (the same host/port/user/pass shown above). The addon auto-detects the versioned database name (e.g. <code>MyVideos131</code>). The standalone service takes its database settings from <code>config.yaml</code> instead.</p>
 
-<h2>Master / Follower mode</h2>
+<h2>Server / Client mode</h2>
 <p>For sharing a library across multiple devices:</p>
 <ul>
-<li><strong>Master</strong> — one device runs the Service runtime (Service addon or standalone) and writes to the shared MySQL database, generates the PVR files, and serves them over HTTP</li>
-<li><strong>Follower</strong> — other devices read from the same database (no sync runs on them) and fetch the master's PVR files over HTTP</li>
+<li><strong>Server</strong> — one device runs the Service runtime (Service addon or standalone) and writes to the shared MySQL database, generates the PVR files, and serves them over HTTP</li>
+<li><strong>Client</strong> — other devices read from the same database (no sync runs on them) and read the server's PVR files over HTTP, configured from the <strong>video addon's</strong> settings (no second service runs on them)</li>
 </ul>
-<p>With the Service addon, set the <strong>Device role</strong> in the Service addon settings (Sync category) to choose master or follower. With the standalone service, run it once (it acts as the master) and point followers at its HTTP URL.</p>
+<p>There is no device-role setting in the Service addon — it is always a server. Use it on one box (or run the standalone service as the server) and point the remaining boxes' video addon <strong>PVR server URL</strong> at its HTTP URL.</p>
 
 <h2>OSMC / Raspberry Pi notes</h2>
 

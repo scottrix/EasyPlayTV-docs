@@ -195,15 +195,18 @@ My5 is the only one that pre-builds a payload.</p>
 </div>
 </div>
 
-<h2>Follower/master detection</h2>
+<h2>Server/client role detection</h2>
 
 <div class="fn">
-<span class="fn-sig">is_master() -> bool · line 107</span>
-<p>Returns <code>_ADDON.getSettingInt("db_source") == 0</code>. Used by
-<a href="service-py.html"><code>service.py</code></a> to decide whether to
-schedule syncs (master) or skip them (follower). Also used by
-<a href="library_sync-py.html"><code>library_sync.sync_provider</code></a>
-as a defensive guard.</p>
+<span class="fn-sig">is_master() -> bool · line 107 <em>(removed in 3-package split)</em></span>
+<p>Legacy: returned <code>_ADDON.getSettingInt("db_source") == 0</code> to
+decide whether to schedule syncs (master) or skip them (follower). The
+master/follower role lived in the Service addon's <code>db_source</code>
+setting and is gone today — the Service addon is always a server, and
+client boxes configure <code>pvr.iptvsimple</code> via the video addon's
+<strong>PVR server URL</strong> setting instead. The Video addon's
+<code>pvr_enabled</code> flag now only hides its own Live TV menu item when
+a PVR server is configured.</p>
 </div>
 
 <h2>get_ua — the shared User-Agent</h2>
