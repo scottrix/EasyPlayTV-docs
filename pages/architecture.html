@@ -203,11 +203,14 @@ in the video addon's <code>addon_data/</code> to trigger targeted syncs, and
 exposed an HTTP <code>POST /sync/vod/&lt;provider&gt;</code> endpoint plus a
 <code>--sync</code> CLI flag. All of these were removed. VOD sync now runs
 only on the scheduled sequential batch (providers one-after-another, then PVR
-refresh), capped by the sync interval. A separate slower pass
+refresh), capped by the sync interval. Stale VOD is removed on two cadences:
+every sync drops whole movies and TV shows missing from the current catalogue
+(a show only after several consecutive absences, tracked in
+<code>series_sync_state.json</code>); a slower pass
 (<code>library_sync.sweep_stale</code>, cadence <code>stale_sweep_hours</code>)
-fetches each provider's full current catalogue and deletes library rows whose
-upstream id is no longer present (stale-removal for all VODs); it is
-failsafe-skipped if a provider's catalogue fetch comes back empty.</p>
+fetches each provider's full current catalogue and deletes episodes/seasons
+whose upstream id is no longer present. Both are failsafe-skipped if a
+provider's catalogue fetch comes back empty.</p>
 </div>
 
 <div class="callout warn">
