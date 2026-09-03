@@ -125,31 +125,24 @@
 <p>Free-to-air My5 content plays without sign-in. Sign-in is only needed for premium content that requires a My5 account.</p>
 
 <h2>Sync schedule</h2>
-<p>The Service runtime (server) syncs each provider on a staggered 6-hour schedule:</p>
+<p>The Service runtime (server) runs a <strong>sequential batch</strong>: providers sync one-after-another (never overlapping), then the PVR channel list + EPG refresh, then the pass repeats. The whole pass runs at most once per configurable interval (default 6 hours; 1 = hourly).</p>
 <table>
-<thead><tr><th>Provider</th><th>First sync</th><th>Repeat</th></tr></thead>
+<thead><tr><th>Step</th><th>What runs</th></tr></thead>
 <tbody>
-<tr><td>BBC iPlayer</td><td>00:00</td><td>Every 6 hours</td></tr>
-<tr><td>ITVX</td><td>00:30</td><td>Every 6 hours</td></tr>
-<tr><td>Channel 4</td><td>01:00</td><td>Every 6 hours</td></tr>
-<tr><td>My5</td><td>01:30</td><td>Every 6 hours</td></tr>
-<tr><td>STV Player</td><td>02:00</td><td>Every 6 hours</td></tr>
-<tr><td>Blaze</td><td>02:30</td><td>Every 6 hours</td></tr>
+<tr><td>1</td><td>BBC iPlayer</td></tr>
+<tr><td>2</td><td>ITVX</td></tr>
+<tr><td>3</td><td>Channel 4</td></tr>
+<tr><td>4</td><td>My5</td></tr>
+<tr><td>5</td><td>STV Player</td></tr>
+<tr><td>6</td><td>Blaze</td></tr>
+<tr><td>7</td><td>Great!</td></tr>
+<tr><td>8</td><td>UKTV</td></tr>
+<tr><td>9</td><td>PVR refresh (channels.m3u + epg.xml)</td></tr>
 </tbody>
 </table>
-<p>The interval is configurable: <strong>VOD sync hours</strong> in the Service addon settings, or <code>vod_sync.interval_hours</code> in <code>config.yaml</code> for the standalone service.</p>
-
-<h2>Triggering a manual sync</h2>
-
-<h3>Service addon (Variant B)</h3>
-<p>The Service addon polls for marker files every 30 seconds and fires the sync when it sees one. Write a marker file in the video addon's profile directory:</p>
-<pre><code>touch /home/osmc/.kodi/userdata/addon_data/plugin.video.easyplaytv/force_sync_c4</code></pre>
-<p>Available providers: <code>bbc</code>, <code>itvx</code>, <code>c4</code>, <code>my5</code>, <code>stv</code>, <code>blaze</code>, <code>great</code>.</p>
-
-<h3>Standalone service (Variant C)</h3>
-<p>Use the <code>--sync</code> flag to force a single provider sync, or <code>--once-pvr</code> to regenerate the PVR files:</p>
-<pre><code>PYTHONPATH=src ./.venv/bin/python -m easyplaytv_service.main --config config.yaml --sync my5
-PYTHONPATH=src ./.venv/bin/python -m easyplaytv_service.main --config config.yaml --once-pvr</code></pre>
+<p>The interval is configurable: <strong>VOD sync hours</strong> in the Service addon settings, or <code>vod_sync.interval_hours</code> in <code>config.yaml</code> for the standalone service. Set it to <code>1</code> for an hourly pass.</p>
+<p>A separate, slower pass removes <strong>stale VOD</strong>: on each sweep the provider's full current episode/movie catalogue is fetched and any library row whose upstream id is no longer present is deleted (expired episodes are dropped). It runs on its own cadence — <strong>Stale VOD sweep hours</strong> in the Service addon settings or <code>vod_sync.stale_sweep_hours</code> in <code>config.yaml</code> (default 24 h). If a provider's catalogue fetch comes back empty (provider down), nothing is deleted that pass.</p>
+<p>There is no manual/forced sync — the scheduled batch is the only way content syncs. Use <code>--once-pvr</code> to regenerate the PVR files without syncing VOD.</p>
 
 <h2>Troubleshooting</h2>
 <p>See <a href="troubleshooting.html">Troubleshooting</a> for common issues and fixes.</p>

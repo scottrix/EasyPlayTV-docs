@@ -141,12 +141,9 @@ docker run -d --name easyplaytv-service --restart unless-stopped \
 <h3>Point Kodi at the server</h3>
 <p>The service serves <code>channels.m3u</code> and <code>epg.xml</code> on <code>http://&lt;server&gt;:8899</code>. On each Kodi device, open the <strong>video addon</strong> settings, enable <strong>PVR integration</strong>, and set <strong>PVR server URL</strong> to <code>http://&lt;server&gt;:8899</code>. The addon configures <code>pvr.iptvsimple</code> for you on addon open (no Service addon needed on that box).</p>
 
-<h3>One-shot CLI flags</h3>
+<h3>One-shot CLI flag</h3>
 <pre><code># Regenerate PVR files once and exit
-PYTHONPATH=src ./.venv/bin/python -m easyplaytv_service.main --config config.yaml --once-pvr
-
-# Force a single VOD sync for one provider and exit
-PYTHONPATH=src ./.venv/bin/python -m easyplaytv_service.main --config config.yaml --sync c4</code></pre>
+PYTHONPATH=src ./.venv/bin/python -m easyplaytv_service.main --config config.yaml --once-pvr</code></pre>
 
 <h2>Manual install</h2>
 <p>Copy the <code>plugin.video.easyplaytv</code> folder to your Kodi addons directory and restart Kodi:</p>

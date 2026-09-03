@@ -130,14 +130,15 @@ channels then resolve through the per-provider resolver modules
 <code>c4.py</code>, <code>my5.py</code>, <code>stv.py</code>,
 <code>blaze.py</code>).</p>
 
-<h3>3. Service fires scheduled sync at 01:00 for C4</h3>
-<p><a href="../files/service-py.html"><code>service.py</code></a> polls every
-30&nbsp;s: when <code>now > self._next_sync["c4"]</code>, it spawns a daemon
-thread that calls <a href="../files/library_sync-py.html"><code>library_sync.sync_provider("c4")</code></a>
-→ <code>sync_series_direct(provider_filter="c4")</code>. The sync fetches
-every C4 series listing, calls TMDb to enrich the metadata, then issues raw
-SQL <code>INSERT INTO tvshow / episode / files / seasons / uniqueid</code> to
-populate the Kodi DB. A successful sync concludes with
+<h3>3. Service runs a sequential sync batch</h3>
+<p>The runtime's <code>scheduler.py</code> runs a batch pass on its interval:
+providers sync one-after-another (e.g. C4 when its turn comes), each calling
+<a href="../files/library_sync-py.html"><code>library_sync.sync_provider("c4")</code></a>
+→ <code>sync_series_direct(provider_filter="c4")</code>. After all providers the
+pass refreshes PVR (channels + EPG), then repeats, capped by the sync interval.
+Each provider sync fetches every series listing, calls TMDb to enrich the
+metadata, then issues raw SQL <code>INSERT INTO tvshow / episode / files /
+seasons / uniqueid</code> to populate the Kodi DB. A successful sync concludes with
 <a href="../files/library_sync-py.html"><code>prefix_existing_tvshows()</code></a>
 and a targeted <code>UpdateLibrary(video, ...)</code> so Kodi's window refreshes.</p>
 
@@ -180,8 +181,7 @@ Shared files:</p>
 <tr><td><code>itvx_cookies.pkl</code></td><td>runtime (itvx_vod)</td><td>runtime (itvx_vod)</td><td>Pickled <code>http.cookiejar</code> for the itvx.com catalog fetches (compiled by the scraper behind the scenes).</td></tr>
 <tr><td><code>stv_cache/</code></td><td>runtime (stv_vod)</td><td>runtime (stv_vod)</td><td>Per-show JSON responses cached to avoid re-downloading 535 catalog pages every sync.</td></tr>
 <tr><td><code>pvr/channels.m3u</code>, <code>pvr/epg.xml</code></td><td>runtime (pvr_manager)</td><td>pvr.iptvsimple</td><td>Generated channel list + EPG. Written to the Service addon's profile when running inside Kodi (<code>addon_data/service.easyplaytv/pvr/</code>), or to <code>paths.pvr_dir</code> for the standalone.</td></tr>
-<tr><td><code>force_sync_&lt;provider&gt;</code></td><td>user/scripts</td><td>service (marker files)</td><td>Marker files in the video addon's profile that request an immediate sync for a single provider.</td></tr>
-<tr><td><code>settings.xml</code></td><td>Kodi settings UI</td><td>all via <code>getSetting*</code></td><td>Video addon: max_resolution, itvx/my5 email+password, has_tv_license, pvr_enabled, pvr_fetch_url (client PVR → points <code>pvr.iptvsimple</code> at a server). Service addon: pvr_enabled, pvr_refresh_hours, serve_http, pvr_region, vod_sync_hours (server role only — no device-role / fetch settings).</td></tr>
+<tr><td><code>settings.xml</code></td><td>Kodi settings UI</td><td>all via <code>getSetting*</code></td><td>Video addon: max_resolution, itvx/my5 email+password, has_tv_license, pvr_enabled, pvr_fetch_url (client PVR → points <code>pvr.iptvsimple</code> at a server). Service addon: pvr_enabled, pvr_refresh_hours, serve_http, pvr_region, vod_sync_hours, stale_sweep_hours (server role only — no device-role / fetch settings).</td></tr>
 </tbody>
 </table>
 
@@ -197,14 +197,17 @@ object per-thread; never pass a connection into a worker thread.</p>
 </div>
 
 <div class="callout warn">
-<span class="callout-title">RunPlugin via JSON-RPC doesn't deliver plugin query-string params</span>
-<p>Kodi 21's <code>Addons.ExecuteAddon</code> fires up the addon via the
-<code>addon.xml</code> entry-point but does not forward query-string
-parameters. That's why the Service runtime polls marker files
-(<code>force_sync_&lt;provider&gt;</code>) in the video addon's
-<code>addon_data/</code> — to trigger targeted syncs from an external
-JSON-RPC client, write the marker file; the service addon's polling
-loop picks it up within 30&nbsp;s.</p>
+<span class="callout-title">No manual sync trigger</span>
+<p>Older releases polled marker files (<code>force_sync_&lt;provider&gt;</code>)
+in the video addon's <code>addon_data/</code> to trigger targeted syncs, and
+exposed an HTTP <code>POST /sync/vod/&lt;provider&gt;</code> endpoint plus a
+<code>--sync</code> CLI flag. All of these were removed. VOD sync now runs
+only on the scheduled sequential batch (providers one-after-another, then PVR
+refresh), capped by the sync interval. A separate slower pass
+(<code>library_sync.sweep_stale</code>, cadence <code>stale_sweep_hours</code>)
+fetches each provider's full current catalogue and deletes library rows whose
+upstream id is no longer present (stale-removal for all VODs); it is
+failsafe-skipped if a provider's catalogue fetch comes back empty.</p>
 </div>
 
 <div class="callout warn">

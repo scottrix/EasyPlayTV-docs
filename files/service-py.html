@@ -81,9 +81,11 @@ split). Today the server logic lives in <code>service.easyplaytv/lib/kodi_servic
 (and the standalone <code>easyplaytv-service</code> runtime); there is no
 follower/device-role distinction anymore — the Service addon is always a server,
 and client boxes point their video addon <em>PVR server URL</em> at it.
-On startup it schedules one sync per provider at a staggered
-6-hour cadence and polls a folder of "force-sync" marker files every 30 s
-so manual triggers can fire out of schedule.</p>
+The current <code>kodi_service.py</code> no longer staggers per-provider timers
+or polls force-sync marker files: the runtime's <code>scheduler.py</code> runs a
+sequential batch (providers one-after-another, then PVR refresh) capped by the
+sync interval, and manual/forced sync was removed. The staggered marker-file
+behaviour below is historical only.</p>
 
 <h2>Module-level configuration</h2>
 

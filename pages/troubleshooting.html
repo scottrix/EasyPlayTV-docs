@@ -369,31 +369,14 @@ a stable boot.</p>
 <h2>Manual syncs / external triggers</h2>
 
 <div class="callout warn">
-<span class="callout-title">JSON-RPC <code>Addons.ExecuteAddon</code> doesn't pass params (Kodi 21+)</span>
-<p><strong>Cause:</strong> Kodi 21's <code>Addons.ExecuteAddon</code>
-does not invoke python.pluginsource addons with query-string params via
-JSON-RPC — it loads the addon's default entry-point without forwarding
-argv. <code>RunPlugin</code> is similarly unreliable.</p>
-<p><strong>Fix:</strong> use the marker-file mechanism in
-<a href="../files/service-py.html">service.py:_check_force_markers</a>
-instead. Touch a file at
-<code><addon_profile>/force_sync_<provider></code> (e.g.
-<code>force_sync_c4</code>). The service polls every 30 s and fires the
-sync when it sees the marker; latency at worst half a minute. From a
-shell: <code>touch /home/osmc/.kodi/userdata/addon_data/plugin.video.easyplaytv/force_sync_c4</code>.</p>
-</div>
-
-<div class="callout warn">
-<span class="callout-title">Manual sync via JSON-RPC kills the daemon thread</span>
-<p><strong>Cause:</strong> if you trigger
-<code>?action=sync&provider=c4</code> (fire-and-forget mode, no
-<code>blocking=1</code>) over JSON-RPC, the daemon thread spawned dies
-the moment the calling script returns — JSON-RPC <code>RunPlugin</code>
-tears down the interpreter that owns the daemon.</p>
-<p><strong>Fix:</strong> always use <code>?action=sync&provider=c4&blocking=1</code>
-from JSON-RPC, OR use the marker-file approach above. From the addon's
-own UI menu it's fine without blocking because the navigation thread
-isn't torn down.</p>
+<span class="callout-title">Manual / forced sync removed</span>
+<p>Earlier releases supported forcing a sync via a marker file
+(<code>force_sync_&lt;provider&gt;</code> in the video addon's profile), an HTTP
+<code>POST /sync/vod/&lt;provider&gt;</code> endpoint, and a <code>--sync</code>
+CLI flag. These were all removed — the only sync path is now the scheduled
+sequential batch (providers one-after-another, then PVR refresh), capped by
+the sync interval (<code>VOD sync hours</code> / <code>vod_sync.interval_hours</code>).
+To sync more often, lower that interval (1 = hourly).</p>
 </div>
 
 <section class="share-section">
