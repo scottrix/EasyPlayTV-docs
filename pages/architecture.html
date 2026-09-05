@@ -153,15 +153,14 @@ and a targeted <code>UpdateLibrary(video, ...)</code> so Kodi's window refreshes
           │       │             │                pvr_manager      scheduler   http_server
           │       │             │                     │           │
           │       │             │                     ▼           ▼
-          └───┬───┴──────┬──────┴──►  resources.lib.__init__   vod_sync.library_sync
-              │          │             (setup_dash_item, load_provider_map, get_ua)
-              ▼          ▼                                            │
-    per-provider live modules    per-provider VOD modules             ▼
-    bbc.py / itvx.py / c4.py /   (video addon plays them        vod_sync/providers/
-    stv.py / blaze.py / sky.py /   at resolve time)             bbc_vod / itvx_vod / c4_vod /
-    pluto.py / greatplayer.py    bbc_vod / itvx_vod / c4_vod /  my5_vod / stv_vod / blaze_vod /
-                                 my5_vod / stv_vod / blaze_vod / uktv_vod / greatplayer
-                                 uktv_vod
+└───┬───┴──────┬──────┴──►  resources.lib.__init__   vod_sync.library_sync
+               │          │             (setup_dash_item, load_provider_map, get_ua)
+               ▼          ▼                                            │
+     per-provider live modules    resolve-only VOD helpers            ▼
+     bbc.py / itvx.py / c4.py /   (video addon plays them at    vod_sync/providers/
+     stv.py / blaze.py / sky.py /   resolve time; the full      bbc_vod / itvx_vod / c4_vod /
+     pluto.py / greatplayer.py       catalogue scrapers live    my5_vod / stv_vod / blaze_vod /
+                                      in the service runtime)   uktv_vod / greatplayer
 </code></pre>
 
 <h2>State files in <code>addon_data/</code></h2>
