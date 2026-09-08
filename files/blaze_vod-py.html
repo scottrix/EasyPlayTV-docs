@@ -64,13 +64,18 @@
 <script>(function(){var fm=document.querySelector('[data-banner=fastmail]');var dd=document.querySelector('[data-banner=dynadot]');if(Math.random()<0.5){fm.hidden=true;dd.hidden=false}})();</script>
 
 <div class="crumbs"><a href="../index.html">Home</a> <span class="sep">/</span> Files <span class="sep">/</span> blaze_vod.py</div>
-<h1>resources/lib/blaze_vod.py <small>— Blaze TV catalogue</small></h1>
+<h1>easyplaytv-service/…/providers/blaze_vod.py <small>— Blaze TV catalogue</small></h1>
+
+<div class="callout warn">
+<span class="callout-title">Also ships in the video addon — this page documents the runtime copy</span>
+<p>The full catalogue scraper ships in the shared runtime at <code>easyplaytv-service/src/easyplaytv_service/vod_sync/providers/blaze_vod.py</code> (and the vendored copy inside <code>service.easyplaytv</code>). The video addon keeps only the playback half (<code>resources/lib/blaze_vod.py</code>: <code>resolve_vod</code>). Functions and line numbers below refer to the runtime copy.</p>
+</div>
 
 <div class="file-meta">
-<span><strong>Path</strong> <code>/resources/lib/blaze_vod.py</code></span>
-<span><strong>Lines</strong> 172</span>
+<span><strong>Path</strong> <code>easyplaytv-service/src/easyplaytv_service/vod_sync/providers/blaze_vod.py</code></span>
+<span><strong>Lines</strong> 166</span>
 <span><strong>Type</strong> catalogue scraper (HTML + per-show HTML pages)</span>
-<span><strong>← called by</strong> <a href="strm-py.html">strm._fetch_*</a>, <a href="default-py.html">default.py:list_vod_blaze_seasons / list_vod_blaze_episodes</a></span>
+<span><strong>← called by</strong> <a href="library_sync-py.html">library_sync.py</a> via <code>_provider_module("blaze_vod")</code>, <code>providers/__init__.py</code></span>
 <span><strong>→ calls</strong> watch.blaze.tv HTML</span>
 </div>
 
@@ -82,17 +87,16 @@ of HTML scraping is acceptable.</p>
 
 <h2>Constants</h2>
 <div class="fn">
-<span class="fn-sig">URL_BASE = "https://watch.blaze.tv" · URL_SERIES = URL_BASE + "/series" · URL_STREAM_API = "%s/streams/api/replay/stream/" + "<uvid>?key=<key>&autoplay=1&gpdr=1&gpdr_consent=undefined&platform=chrome" · lines 5-7</span>
-<p>The three URL roots. <em>streams/api/replay/stream/</em> is the VOD
-equivalent of the <em>streams/api/live/stream/</em> used by
-<a href="blaze-py.html">blaze.py</a> for live — different path under
-<em>/streams/</em> for VOD versus live content. Same query-string
-structure (<code>key=<key></code>, <code>platform=chrome</code>).</p>
+<span class="fn-sig">URL_BASE = "https://watch.blaze.tv" · URL_SERIES = URL_BASE + "/series" · lines 11-12</span>
+<p>The URL roots. The per-episode <code>streams/api/replay/stream/…</code>
+playback endpoint is built by the addon's <a href="blaze-py.html">blaze.py</a>
+resolver at play time using the <code>stream_key</code> /
+<code>stream_uvid</code> values <code>list_episodes</code> scrapes.</p>
 </div>
 
 <h2>Listing functions</h2>
 <div class="fn">
-<span class="fn-sig">list_shows() · line 10</span>
+<span class="fn-sig">list_shows() · line 15</span>
 <p>No pagination — Blaze returns the entire series catalogue in one HTML
 page. The function:</p>
 <ol>
@@ -120,30 +124,32 @@ see empty catalogues. No fallback path; no JSON API to fall back to.</p>
 </div>
 
 <div class="fn">
-<span class="fn-sig">list_seasons(series_url) · line 51</span>
+<span class="fn-sig">list_seasons(series_url) · line 56</span>
 <p>Fetches a per-show page (the f_name stored in list_shows), finds
 <code>id="season-<N>-tab"</code> elements (Bootstrap tab pattern), and
 builds a seasons list. If no seasons are found on the page, fabricates a
 synthetic "Episodes" season with season_id=0 (the Kodi specials block) to
 avoid empty listings for single-season shows Blaze didn't bother to flag.</p>
 <p>Triple-returns <em>(seasons, html, stream_base)</em> from the show page
-so the caller (default.py's <code>list_vod_blaze_episodes</code>) doesn't
-have to re-fetch when it then needs to enumerate episodes. Sizes of HTML
-are bounded by <code>list_seasons</code>' fetch and reused downstream.</p>
+so a caller that then needs to enumerate episodes doesn't
+have to re-fetch the page. Sizes of HTML
+are bounded by <code>list_seasons</code>' fetch and reused downstream
+(<code>list_episodes(html, …)</code> consumes the already-fetched markup).</p>
 </div>
 <div class="fn">
-<span class="fn-sig">list_episodes(html, season_number=None) · line 87</span>
+<span class="fn-sig">list_episodes(html, season_number=None) · line 92</span>
 <p>Consumes the already-fetched <em>html</em> from <code>list_seasons</code>
 — does NO additional HTTP fetch. Walks the
 <code>id="seasonsContent"</code> section in the HTML, parses per-episode
 cards. Filters by season_number when supplied. Each episode dict has
-<em>video_id</em>, <em>title</em>, <em>image</em>, and importantly a
-<em>key</em> (a per-episode uvid-key Blaze requires for stream playback —
-NOT the same as the catalog-level value <code>data-key=…</code> that
-<a href="blaze-py.html">blaze.py</a> scrapes for live).</p>
+<em>title</em>, <em>image</em>, <em>stream_key</em> (per-episode
+<code>data-key</code>) and <em>stream_uvid</em> (per-episode
+<code>data-uvid</code>) — the pair Blaze's replay endpoint requires for VOD
+playback, plus parsed <em>season_number</em>/<em>episode_number</em> and
+<em>duration</em>.</p>
 </div>
 <div class="fn">
-<span class="fn-sig">_extract_stream_base(html) · (helper)</span>
+<span class="fn-sig">_extract_stream_base(html) · line 162</span>
 <p>Same <em>"streams":"…"</em> JSON config pattern that blaze.py uses for
 live — extracts the Blaze streams base URL the per-episode player uses.
 Without it the VOD episodes would resolve to the wrong (default) streams

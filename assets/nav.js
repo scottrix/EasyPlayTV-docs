@@ -11,6 +11,7 @@ const NAV_GROUPS = [
       { href: "pages/installation.html",    label: "Installation",         tags: "install setup zip manual mysql" },
       { href: "pages/usage.html",           label: "Usage",                tags: "config settings live tv sync sign-in" },
       { href: "pages/troubleshooting.html", label: "Troubleshooting",      tags: "known issues fixes errors" },
+      { href: "pages/changelog.html",       label: "Changelog & upgrades", tags: "release history version upgrade changelog notes" },
     ],
   },
   {
@@ -33,7 +34,7 @@ const NAV_GROUPS = [
     title: "Core engine",
     items: [
       { href: "files/library_sync-py.html", label: "library_sync.py", tags: "sync tmdb insert tvshow episode standalone runtime" },
-      { href: "files/strm-py.html",          label: "strm.py",          tags: "url builder fetch shows" },
+      { href: "files/strm-py.html",          label: "strm.py (removed)", tags: "removed history url builder" },
       { href: "files/init-py.html",          label: "__init__.py",     tags: "shared setup_dash_item provider_map" },
       { href: "files/genres-py.html",         label: "genres.py",       tags: "unified genres provider labels" },
       { href: "files/catalog_check-py.html", label: "catalog_check.py", tags: "stale titles mark" },

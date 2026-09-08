@@ -64,19 +64,32 @@
 <script>(function(){var fm=document.querySelector('[data-banner=fastmail]');var dd=document.querySelector('[data-banner=dynadot]');if(Math.random()<0.5){fm.hidden=true;dd.hidden=false}})();</script>
 
 <div class="crumbs"><a href="../index.html">Home</a> <span class="sep">/</span> Files <span class="sep">/</span> strm.py</div>
-<h1>resources/lib/strm.py <small>— URL builders & show fetchers</small></h1>
+<h1>strm.py <small>— removed (pre-split URL builders & show fetchers)</small></h1>
 
 <div class="callout warn">
-<span class="callout-title">Moved / removed: functionality now in the standalone service runtime</span>
-<p>Since the 3-package split the provider fetch helpers (the <code>_fetch_*</code> / <code>build_strm_url</code> logic documented below) ship in the shared runtime's <code>easyplaytv-service/src/easyplaytv_service/vod_sync/providers/</code>. The video addon is playback-only and no longer contains a <code>strm.py</code>.</p>
+<span class="callout-title">Removed — module no longer exists</span>
+<p>The <code>strm.py</code> module was deleted in the 3-package split. Its
+responsibilities were absorbed into the shared runtime:</p>
+<ul>
+<li>Provider show aggregation + <code>_nav_*</code> tagging now happens in
+<a href="library_sync-py.html">library_sync.py</a>'s per-provider sync
+branches (<code>_sync_movies</code> / <code>_sync_series</code>).</li>
+<li>The <code>plugin://</code> URL synthesis is folded into
+<code>_insert_movie</code> / <code>_insert_episode</code> in
+<a href="library_sync-py.html">library_sync.py</a>.</li>
+<li>Provider catalogue scrapers ship in
+<code>easyplaytv-service/src/easyplaytv_service/vod_sync/providers/</code>.</li>
+</ul>
+<p>The detail below is retained purely as historical record of the pre-split
+architecture — none of the functions documented exist anymore.</p>
 </div>
 
 <div class="file-meta">
-<span><strong>Path</strong> <code>/resources/lib/strm.py</code></span>
-<span><strong>Lines</strong> 363</span>
-<span><strong>Type</strong> URL synthesis + provider-listing aggregator</span>
-<span><strong>← called by</strong> <a href="library_sync-py.html">library_sync.py</a> (sync_movies_direct, sync_series_direct, remove_stale_*)</span>
-<span><strong>→ calls</strong> all <code>*_vod.py</code> providers, <a href="init-py.html">safe_filename</a></span>
+<span><strong>Path</strong> <em>removed</em></span>
+<span><strong>Lines</strong> <em>removed</em></span>
+<span><strong>Type</strong> URL synthesis + provider-listing aggregator (deleted)</span>
+<span><strong>← called by</strong> <em>none — module deleted</em></span>
+<span><strong>→ calls</strong> <em>none — module deleted</em></span>
 </div>
 
 <h2>Role</h2>
@@ -151,7 +164,7 @@ downstream code knows where it came from.</p>
 <code>_nav_mode</code> (either <code>"playable"</code> for
 standalone/movie-like shows or <code>"series"</code> for shows with multiple
 episodes) and the provider-specific <code>_nav_*</code> fields that
-<a href="library_sync-py.html"><code>sync_series_direct</code></a> uses to
+<a href="library_sync-py.html"><code>_sync_series</code></a> uses to
 fetch seasons/episodes:</p>
 <table>
 <thead><tr><th>Provider</th><th>Series mode fields</th><th>Playable mode condition</th></tr></thead>
@@ -163,8 +176,8 @@ fetch seasons/episodes:</p>
 <tr><td>STV</td><td><code>_nav_f_name</code></td><td><code>show.get("standalone")</code></td></tr>
 </tbody>
 </table>
-<p>The <code>_nav_*</code> pre-pass means <code>sync_series_direct</code>
-doesn't have to know each provider's id-field naming.</p>
+<p>The <code>_nav_*</code> pre-pass meant the sync layer didn't have to know
+each provider's id-field naming.</p>
 </div>
 
 <h2>Movie URL builder</h2>
@@ -236,13 +249,13 @@ subtitle or just <code>"Episode N"</code>. Used only inside
 <h2>Cross-file interactions</h2>
 <ul>
 <li>Importing <a href="init-py.html"><code>safe_filename</code></a> for title normalisation across all URL builders.</li>
-<li>Calling <code>c4_vod.list_seasons()</code> and <code>stv_vod.list_seasons()</code>
-inline within <code>_build_strm_url</code> — these are sync-time HTTP fetches,
-so the cost is folded into the slower of the two paths (movie catalog
-fetch).</li>
-<li>Returning flat lists that <a href="library_sync-py.html"><code>library_sync.sync_series_direct</code></a>
-filters by <code>_nav_mode == "series"</code> and <code>provider</code>.</li>
-</ul>
+    <li>Calling <code>c4_vod.list_seasons()</code> and <code>stv_vod.list_seasons()</code>
+    inline within <code>_build_strm_url</code> — these were sync-time HTTP fetches,
+    so the cost was folded into the slower of the two paths (movie catalog
+    fetch).</li>
+    <li>Returning flat lists that the sync layer filtered by
+    <code>_nav_mode == "series"</code> and <code>provider</code>.</li>
+    </ul>
 
 <section class="share-section">
   <h2>Share this page</h2>

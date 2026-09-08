@@ -72,122 +72,103 @@
 </div>
 
 <div class="file-meta">
-<span><strong>Path</strong> <code>/resources/lib/library_sync.py</code></span>
-<span><strong>Lines</strong> 1,799</span>
-<span><strong>Type</strong> sync engine (called by service.py + default.py)</span>
-<span><strong>← called by</strong> <a href="service-py.html">service.py</a>, <a href="default-py.html">default.py</a> (manual sync, backfill_art, prefix_titles)</span>
-<span><strong>→ calls</strong> pymysql, TMDb HTTP, all <code>*_vod.py</code> providers, <a href="strm-py.html">strm.py</a></span>
+<span><strong>Path</strong> <code>easyplaytv-service/src/easyplaytv_service/vod_sync/library_sync.py</code></span>
+<span><strong>Lines</strong> 1,608</span>
+<span><strong>Type</strong> sync engine (shared runtime — standalone service or Service addon)</span>
+<span><strong>← called by</strong> the scheduler's <code>Scheduler.run_sync(provider)</code> (sequential per-provider batch)</span>
+<span><strong>→ calls</strong> pymysql (via <code>Database</code>), TMDb HTTP, all <code>*_vod.py</code> provider modules</span>
 </div>
 
 <h2>Role</h2>
-<p>The heart of the addon. Connects to Kodi's MariaDB video database
-(<code>MyVideos131</code> at <code>192.168.178.17:3306</code>), fetches catalogue
-listings from each provider, enriches them with TMDb metadata, and writes
+<p>The heart of the library sync. Connects to Kodi's MariaDB video database
+(host/user/password/name from <code>DatabaseConfig</code> — default
+<code>MyVideos131</code>), fetches catalogue listings from each provider,
+enriches them with TMDb metadata via the disambiguation scorer, and writes
 <code>tvshow</code> / <code>seasons</code> / <code>episode</code> /
 <code>files</code> / <code>movie</code> / <code>uniqueid</code> / <code>art</code>
-rows directly — bypassing Kodi's own scanner. After each successful sync it
-fires a targeted <code>UpdateLibrary(video, …)</code> builtin so Kodi's window
-refreshes without re-scraping.</p>
+rows directly — bypassing Kodi's own scanner, which is why the series path is
+<code>exclude=1</code>. This file is platform-agnostic (no
+<code>xbmc*</code> imports): it runs identically inside Kodi via the Service
+addon and as a systemd/Docker process in the standalone service.</p>
 
 <h2>Module-level constants</h2>
 
 <div class="fn">
-<span class="fn-sig">STRM_DIR = <addon profile> · MOVIE_PATH / SERIES_PATH = file-system paths · PLUGIN_SOURCE_PATH = "plugin://plugin.video.easyplaytv/" · lines 15–40</span>
-<p>Three path flavours:</p>
-<ul>
-<li><code>STRM_DIR</code> — addon's writable profile dir, used for state files.</li>
-<li><code>MOVIE_PATH</code> / <code>SERIES_PATH</code> — on-disk folder
-strings the addon uses to filter its own rows in stale-cleanup queries
-(literal <code>easyplaytv…/Series|Movies</code> substring match). The
-folders themselves are not actively used for storage — all episode / movie
-files live under <code>PLUGIN_SOURCE_PATH</code>.</li>
-<li><code>PLUGIN_SOURCE_PATH</code> — the <em>single</em> path row every
-episode / movie file gets attached to. <code>exclude=1</code> on this row
-prevents Kodi's TMDB scanner from creating duplicate un-prefixed tvshow
-rows (see <code>ensure_series_path_config</code> below).</li>
-</ul>
+<span class="fn-sig">PLUGIN_SOURCE_PATH = "plugin://plugin.video.easyplaytv/" · line 31</span>
+<p>The <em>single</em> path row every episode / movie file gets attached
+to in Kodi's MyVideos DB. Movie paths (<code>…/movies/</code>) and TV
+paths (<code>…/Series/</code>) live under it as sub-paths in the Kodi
+source for the same library source. <code>exclude=1</code> on the series
+path row prevents Kodi's TMDB scanner from creating duplicate un-prefixed
+tvshow rows (see the path-row section below).</p>
 </div>
 
 <div class="fn">
-<span class="fn-sig">TMDB_API_KEY · TMDB_BASE · TMDB_IMG_BASE · lines 28–30</span>
-<p>TMDb HTTP glue. The API key is bundled; the user-facing setting for max
-resolution lives in <a href="init-py.html"><code>__init__.get_max_resolution()</code></a>.
-<code>TMDB_IMG_BASE</code> is used to assemble season/episode art URLs.</p>
+<span class="fn-sig">TMDB_API_KEY · TMDB_BASE · TMDB_IMG_BASE · lines 27–29</span>
+<p>TMDb HTTP glue. The API key is bundled; there is no user-facing
+resolution knob anymore (resolution follows what each provider's stream
+API returns). <code>TMDB_IMG_BASE</code> is used to assemble season/episode
+art URLs.</p>
 </div>
 
 <div class="fn">
-<span class="fn-sig">DB_HOST/PORT/USER/PASS/NAME · lines 32–36</span>
-<p>Fallback DB connection constants. Real values are read from
-Kodi's <code>advancedsettings.xml</code> via <code>_read_db_config()</code>;
-these constants only kick in if Kodi's not configured, which it always is
-in production. <code>MyVideos131</code> matches Kodi 21's schema version.</p>
+<span class="fn-sig">DatabaseConfig (config.py) — host/port/user/password/name</span>
+<p>DB connection values are no longer hardcoded in this module. Runtime
+reads them from <code>config.yaml</code> via <code>DatabaseConfig</code>
+(<code>config.py</code>), injected as <code>db</code> into every sync
+function. <code>MyVideos131</code> is the default <code>database.name</code>
+for Kodi 21's schema version.</p>
 </div>
 
 <h2>DB connection model — the gotcha</h2>
 
 <div class="fn">
-<span class="fn-sig">_get_db() -> pymysql.Connection · line 52</span>
-<p>Per-thread connection cache. Each worker thread (one per provider in
-<code>service.py</code>) gets its own <code>pymysql.connect()</code> stored
-on the thread-local. The main thread falls back to the module-level
-<code>_sync_db</code> for back-compat with non-threaded GUI callers.</p>
+<span class="fn-sig">Database class (database.py) · _ensure_path_id(db, …)</span>
+<p>All DB work goes through the <code>runtime.Database</code> manager — a
+single lazily-created <code>pymysql.Connection</code> (per
+<code>DatabaseConfig</code>, reconnecting via <code>ping(reconnect=True)</code>
+on idle). <code>_ensure_path_id</code> (line 277) is the addon's entry into
+the path-row configuration below.</p>
 
-<div class="callout danger"><span class="callout-title">pymysql is NOT thread-safe on a shared connection</span>
+<div class="callout danger"><span class="callout-title">pymysql is NOT safe to fan out across threads on one shared connection</span>
 <p>Concurrent queries on the same socket corrupt each other's MySQL packet
-stream. Two failure modes observed in production:</p>
+stream. Because the original addon pooled connections per worker thread and
+fell back to a shared module-level handle when a worker's died mid-query,
+two failure modes were seen in production:</p>
 <ul>
 <li><em>"Packet sequence number wrong - got 2 expected 1"</em> — packets from
 two threads interleave on the wire.</li>
 <li><em>"'NoneType' object has no attribute 'read'"</em> — one thread's
 <code>ping()</code> closed the other's socket reader mid-query.</li>
 </ul>
-<p>The original fallback that wrapped a failed ping with a re-create <em>also</em>
-grabbed <code>_sync_db</code> for non-main threads, so when a worker's
-connection died mid-query it would silently hop onto the main thread's
-socket and re-corrupt. The current code at line 74-88 explicitly checks
-<code>threading.current_thread() is threading.main_thread()</code> before
-touching <code>_sync_db</code> — workers <em>always</em> create their own.</p>
+<p>The runtime avoids this by running the batch sync on a single thread — the
+scheduler's sequential provider passes each use their own
+<code>Database</code> instance, and no sync code creates sibling connections
+per provider.</p>
 </div>
 </div>
 
 <div class="fn">
-<span class="fn-sig">_read_db_config() -> dict | None · _resolve_db_name(cfg) -> str · lines 110, 131</span>
-<p>Parses <code>advancedsettings.xml</code>'s <code><videodatabase></code>
-block. <code>_resolve_db_name</code> handles Kodi's auto-versioned DB
-naming — connects to the server, lists databases matching
-<code>MyVideos%</code>, picks the highest-numbered one. This lets the addon
-survive a Kodi upgrade that bumps the schema (e.g. <code>MyVideos131</code>
-→ <code>MyVideos132</code>) without code changes.</p>
+<span class="fn-sig">DatabaseConfig (config.py) · <code>database.name</code> default <code>MyVideos131</code></span>
+<p>The MySQL target is read from the runtime <code>config.yaml</code>
+(<code>database.host/port/user/password/name</code>) — <code>DatabaseConfig</code>
+in <code>config.py</code>. A Kodi upgrade that bumps the schema means the
+<code>name</code> must be updated in config (e.g. <code>MyVideos131</code> →
+a newer version) — there is no auto-discovery of the latest
+<code>MyVideos%</code> database.</p>
 </div>
 
 <h2>Path-row configuration</h2>
 
 <div class="fn">
-<span class="fn-sig">_sanitize_scraper_settings_xml(xml) -> str · line 155</span>
-<p>Quotes unquoted attributes in TMDb scraper <code>strSettings</code> XML
-and force-pins <code>verboselog=false</code>. Why this matters:
-<em>"a prior EasyPlayTV run propagated a malformed unquoted XML
-<code><setting id=verboselog>true</setting></code> to EasyPlayTV's
-parent Series/ path row in MyVideos.path. With verboselog=true, the TMDb
-scraper dumps 20K+ log lines per /tv/<id>/season/N API call (pformat of
-the entire JSON response), costing ~22s per season on RPi SD-card I/O —
-e.g. ~13 min for WWE Raw alone (35 seasons)."</em></p>
-</div>
-
-<div class="fn">
-<span class="fn-sig">ensure_path_config() · line 179 — for movies</span>
-<p>Idempotent. Inserts or updates the path row for
-<code>MOVIE_PATH</code> with <code>content=.movies</code>,
-<code>scraper=metadata.themoviedb.org.python</code>, <code>exclude=0</code>.
-Copies the <code>strSettings</code> XML from an existing movies-scraped path
-row of any other library source (sanitised) so the addon doesn't ship a
-hard-coded scraper config.</p>
-</div>
-
-<div class="fn">
-<span class="fn-sig">ensure_series_path_config() · line 212 — for series</span>
-<p>Same idempotent insert-or-update for <code>PLUGIN_SOURCE_PATH</code>, but
-sets <code>exclude=1</code>. Reasoning (from the inline doc):</p>
+<span class="fn-sig">_ensure_path(db, str_path, content_type, scraper) · line 503 — for tvshows</span>
+<p>Idempotent insert-or-fetch of the <code>path</code> row used as the series
+library root. If the row is missing, copies the <code>strSettings</code> XML
+from any other library source with the same content type + scraper
+(sanitised via <code>_sanitize_scraper_settings_xml</code>) so the addon
+doesn't ship a hard-coded scraper config. Called with
+<code>content_type="tvshows"</code>, <code>scraper=metadata.tvshows.themoviedb.org.python</code>.
+The <code>exclude</code> flag on this row is the important part:</p>
 
 <div class="callout warn"><span class="callout-title">Why the plugin URL is <code>exclude=1</code></span>
 <p>Registering the plugin URL as a <code>strContent='tvshows'</code> path with
@@ -205,10 +186,31 @@ noise.</p>
 </div>
 </div>
 
-<h2>TMDb lookups</h2>
+<div class="fn">
+<span class="fn-sig">_ensure_path_id(db, str_path, content_type, scraper, settings_xml="") · line 277 — for movies</span>
+<p>A bare variant for the movies root (<code>PLUGIN_SOURCE_PATH</code> with
+<code>content_type="movies"</code>, the TMDb movie scraper): insert-or-fetch
+without the settings-copy, used by the movie sync pass. Same
+<code>exclude=0</code> on the row — movie rows carry no provider prefix to
+mis-scrape.</p>
+</div>
 
 <div class="fn">
-<span class="fn-sig">_tmdb_search(title, year=None) · _tmdb_movie(id) · _tmdb_tv_search(title, year=None) · _tmdb_tv(id) · _tmdb_tv_season(tmdb_id, season_num) · lines 255–327</span>
+<span class="fn-sig">_sanitize_scraper_settings_xml(xml) -> str · line 490</span>
+<p>Quotes unquoted attributes in TMDb scraper <code>strSettings</code> XML
+and force-pins <code>verboselog=false</code>. Why this matters:
+<em>"a prior EasyPlayTV run propagated a malformed unquoted XML
+<code><setting id=verboselog>true</setting></code> to EasyPlayTV's
+parent Series/ path row in MyVideos.path. With verboselog=true, the TMDb
+scraper dumps 20K+ log lines per /tv/<id>/season/N API call (pformat of
+the entire JSON response), costing ~22s per season on RPi SD-card I/O —
+e.g. ~13 min for WWE Raw alone (35 seasons)."</em></p>
+</div>
+
+<h2>TMDb lookups and the disambiguation scorer</h2>
+
+<div class="fn">
+<span class="fn-sig">_tmdb_search(title, year=None, description="") · _tmdb_movie(id) · _tmdb_tv_search(title, year=None, description="") · _tmdb_tv(id) · _tmdb_tv_season(tmdb_id, season_num) · lines 63–134</span>
 <p>Thin wrappers over TMDb's <code>search/movie</code>, <code>movie/<id></code>,
 <code>search/tv</code>, <code>tv/<id></code>,
 <code>tv/<id>/season/<N></code> endpoints. All return
@@ -219,96 +221,119 @@ that's why the sync serialises with a 1 s sleep every 20 shows and a 5-show
 state save cadence.</p>
 </div>
 
-<h2>The big show: sync_series_direct</h2>
+<div class="fn">
+<span class="fn-sig">_title_similarity(query, result_title) · _score_result(r, title, year, description, date_key, name_key) · _pick_tmdb_movie_result(results, title, year=None, description="") · _pick_tmdb_tv_result(results, title, year=None, description="") · lines 195–269</span>
+<p>The search results are <em>ranked</em>, not just trusted in TMDb's order.
+The scorer keeps the exact-title top result unless a same-title edition
+matches the provider's year, and otherwise scores every candidate:</p>
+<ul>
+<li><strong>Title similarity dominates.</strong>
+<code>_title_similarity</code> is token Jaccard over accent-folded,
+lower-cased word tokens (parenthesised years stripped):
+<em>apollo 13</em> vs <em>apollo 13</em> → 1.0, vs
+<em>apollo 13: to the edge and back</em> → 0.29. Weighted ×100 so a
+making-of doc, spinoff or regional variant that merely shares tokens with
+the query can never dethrone an exact-name title.</li>
+<li><strong>Year is a tie-break only</strong> (+10 when the first four
+characters of the TMDb <code>release_date</code> /
+<code>first_air_date</code> equal the provider's year) — never enough to
+override title similarity.</li>
+<li><strong>Overview token overlap</strong> (+3, capped) nudges very close
+calls toward the edition whose plot mentions the same people/places.</li>
+</ul>
+<p>This is what fixes titles TMDb's bare first-search-result gets wrong —
+ITVX's <em>War</em> (2007) resolving to <em>Avengers: Infinity War</em>,
+or a documentary shadowing its titular film. Directory-name lookup
+(<code>prefixed_dirname</code>) still guards later syncs against matching a
+re-ranking TMDb result to the wrong existing row (see the callout below).</p>
+</div>
+
+<h2>The big show: _sync_series</h2>
 
 <div class="fn">
-<span class="fn-sig">sync_series_direct(force=False, provider_filter=None) -> int · line 667</span>
-<p>The spine of the addon. Steps:</p>
+<span class="fn-sig">_sync_series(db, provider_filter=None, force=False, data_dir="") -> int · line 1000</span>
+<p>The spine of the sync. Steps:</p>
 <ol>
-<li><code>ensure_series_path_config()</code> — make sure the plugin:// path row exists with <code>exclude=1</code>.</li>
-<li>Import and call <a href="strm-py.html"><code>strm._fetch_series_shows()</code></a>
-to get every show from every provider.</li>
-<li>If <code>provider_filter</code> is set, restrict to that provider (so
-manual per-provider syncs in <code>service.py</code> don't re-process all
-7000+ other-provider shows each time).</li>
+<li><code>_fetch_all_series_shows(provider_filter)</code> (line 803) — the
+provider modules' catalogue fetchers → one flat list of shows, tagged with
+<code>_nav_mode</code> (<code>series</code> vs <code>playable</code>).
+Restricted to <code>_nav_mode == "series"</code> (and the provider filter
+if given) before processing.</li>
+<li>Build <code>fresh_safe_titles</code> — the stripped safe-filename set of
+the provider's current catalogue, handed to
+<code>_sweep_absent_shows</code> after the loop for the per-sync absence
+sweep.</li>
 <li>Query existing tvshow rows on <code>PLUGIN_SOURCE_PATH</code> and build
-two sets: <code>existing_safe_titles</code> (anything) and
+<code>existing_safe_titles</code> (anything) and
 <code>existing_safe_titles_with_eps</code> (any show with ≥1 episode).
 Pre-strip the <code>[PROVIDER]</code> prefix so prefixed and un-prefixed
-rows collapse to the same key — this is the de-duplication safety net.</li>
-<li>For each show:</li>
-<li style="margin-left:2em">a. Skip if <code>safe_title in existing_safe_titles_with_eps</code>
-(unless <code>force=True</code>).</li>
-<li style="margin-left:2em">b. TMDb search → TMDb TV fetch for canonical metadata.</li>
-<li style="margin-left:2em">c. <strong>Fetch episodes BEFORE inserting the tvshow row.</strong>
-This avoids a class of bug where inserting first then skipping on
-<code>if not episodes: continue</code> would leak empty tvshow rows
-into the DB (films mis-badged as series, withdrawn brands, API fetch errors).
-Fetchers all key off the show's own fields (f_name/pid/slug) so they don't
-need <code>show_id</code>.</li>
-<li style="margin-left:2em">d. Provider-specific episode fetcher dispatch
-(BBC / My5 / ITVX / C4 / STV — the five providers that expose series).</li>
-<li style="margin-left:2em">e. <strong>STV episode_number=0 renumbering pre-pass</strong>
-(lines 858–888). Some providers (notably STV) return episodes with
-<code>episode_number=0</code> when <code>playerSeries</code> is null. The
-insert loop drops <code>episode_number=0</code> via
-<code>if en_int < 1: continue</code>, which would otherwise drop single-episode
-documentaries and entire programmes without per-episode index info (Coronation
-Street, Emmerdale daily strips). The renumber pre-pass re-numbers them
-sequentially from 1 within their season block, preserving explicit numbering
-for the episodes that do have a number. If season is also 0/missing, it's
-bumped to 1 so the show appears as Season 1 rather than the Kodi specials
-block (S00).</li>
-<li style="margin-left:2em">f. <code>_insert_tvshow(db, safe_title, tv_data, provider=…)</code>.</li>
-<li style="margin-left:2em">g. For each episode: build
-<code>strm_url</code>, parse <code>sn_int</code>/<code>en_int</code>
-(defaulting missing/zero seasons to 1, but dropping zero episode numbers),
-<code>_ensure_season()</code>, then
-<code>_insert_episode(db, show_id, season_id, sn, en, ep_data, strm_url, "", show_name=…)</code>.
-<code>ep_data</code> comes from the TMDb season-cache keyed by
-<code>(sn_int, en_int)</code> — so episode titles/plots/thumbs are TMDb's,
-not the provider's.</li>
-<li style="margin-left:2em">h. Persist state to <code>series_sync_state.json</code>
-every 5 shows; sleep 1&nbsp;s every 20 shows (TMDb rate-limit politeness).</li>
+rows collapse to the same key — the de-duplication safety net.</li>
+<li>For each show (skipped if <code>safe_title</code> already has episodes
+and <code>force</code> is false):</li>
+<li style="margin-left:2em">a. TMDb tv-search via the disambiguation scorer
+(<code>_pick_tmdb_tv_result</code>), then <code>_tmdb_tv()</code> for
+canonical metadata. If search fails the show syncs with title-only
+metadata (<code>{"name": title, "id": 0}</code>).</li>
+<li style="margin-left:2em">b. <strong>Fetch episodes BEFORE inserting the tvshow row.</strong>
+This avoids leaking empty tvshow rows into the DB when a show's episodes
+come back empty (films mis-badged as series, withdrawn brands, API fetch
+errors). Fetchers key off the show's own fields (f_name/pid/slug), so they
+don't need <code>show_id</code> yet.</li>
+<li style="margin-left:2em">c. <code>_insert_tvshow</code> only once the
+episode list is non-empty, then insert episodes grouped by season via
+<code>_ensure_season</code> + <code>_insert_episode</code>.</li>
+<li style="margin-left:2em">d. <strong>STV episode_number=0 renumbering</strong> —
+providers (notably STV) return episodes with <code>episode_number=0</code>
+when <code>playerSeries</code> is null; these are renumbered sequentially
+from 1 before insert, so no episode is silently dropped.</li>
+<li>Track per-show <code>absent_shows</code> counts and persist state to
+<code>series_sync_state.json</code> every 5 shows; sleep 1 s every 20 shows
+to be gentle on the TMDb API (no key quota, but the endpoints rate-limit).
+Also restores <code>absent_shows</code> from state so absence survives
+restarts.</li>
+<li>After the loop: <code>_sweep_absent_shows(...)</code> deletes shows
+absent for <code>ABSENT_SHOW_THRESHOLD</code> (3) consecutive passes.</li>
 </ol>
 
-<div class="callout danger"><span class="callout-title">Don't override the sync's <code>provider</code> from <code>provider_map</code></span>
-<p>Lines 826-838 have an explicit warning inline. <code>provider_map</code>
-stores the <em>first</em> provider that synced a given <code>safe_title</code>
-— e.g. an ITVX run populated <code>provider_map["Buried"]["provider"]="itvx"</code>.
-When C4 later syncs its <em>own</em> "Buried" (<code>provider="c4"</code>
-from <code>c4_vod.list_shows</code>), an override would silently switch
-provider to "itvx" and then the episode fetcher would call
-<code>itvx_vod.list_episodes</code> with C4's empty
-<code>_nav_slug</code>/<code>_nav_prog_id</code> — producing 404s and zero
-episodes inserted. The <code>show</code> dict's <code>provider</code> is
-authoritative for the sync in progress; <code>provider_map</code> is used
-only for UI cross-refs.</p>
+<div class="callout ok"><span class="callout-title">provider_map — cross-ref only, never authoritative</span>
+<p><code>provider_map</code> (<code>data_dir/provider_map.json</code>) records
+which provider first synced each <code>safe_title</code>, plus the
+provider-native navigation fields needed to replay a stream in the video
+addon (<code>bbc_pid</code>, <code>itvx_prog_id</code>/<code>itvx_slug</code>,
+<code>c4_f_name</code>, <code>my5_f_name</code>, <code>stv_guid</code>,
+<code>uktv_slug</code>, <code>great_show_id</code>). It is a keyed by
+<code>safe_title</code> (not by DB id), so it ties the sync's nav data to the
+library rows the video addon resolves. The sync <em>always</em> uses the
+<code>show</code> dict's own <code>provider</code> for the current pass —
+<code>provider_map</code> is only UI / re-resolution cross-ref.</p>
 </div>
 
-<div class="callout ok"><span class="callout-title">Fix — fetch-first ordering</span>
-<p>Fetching episodes <em>before</em> the tvshow INSERT eliminated several
-hundred empty-show rows in the production DB. If you see empty shows in the
-library today, look for a provider whose list_episodes raised an exception
-and let it bubble — don't try to fix it by inserting the tvshow first.</p>
+<div class="callout ok"><span class="callout-title">Ordering rule — insert the tvshow row only after episodes fetch</span>
+<p>Fetching episodes <em>before</em> the tvshow INSERT avoids leaking empty
+tvshow rows into the DB when a provider's episode fetch comes back empty
+(films mis-badged as series, withdrawn brands, API errors). <code>_sync_series</code>
+calls <code>_fetch_show_episodes</code> first and
+<code>continue</code>s on an empty list — <code>_insert_tvshow</code> runs
+only for shows that actually have episodes.</p>
 </div>
 </div>
 
 <div class="fn">
-<span class="fn-sig">sync_movies_direct(force=False) -> int · line 558</span>
-<p>The movie equivalent of <code>sync_series_direct</code>. Simpler — no
+<span class="fn-sig">_sync_movies(db, provider_filter=None, force=False, data_dir="") -> int · line 1198</span>
+<p>The movie equivalent of <code>_sync_series</code>. Simpler — no
 seasons to track, no provider-vs-provider episode-fetcher dispatch, no
 episode renumbering. Calls
-<a href="strm-py.html"><code>strm._fetch_movies()</code></a>, iterates,
-TMDb-searches by title, <code>_insert_movie</code>. State file is
+<code>provider_mod.fetch_movies(provider_filter=…)</code>, iterates,
+TMDb-searches by title via the disambiguation scorer,
+<code>_insert_movie</code>. State file is
 <code>library_sync_state.json</code> (separate from the series one).</p>
 </div>
 
 <h2>Insert helpers</h2>
 
 <div class="fn">
-<span class="fn-sig">_insert_movie(db, path_id, filename, movie_data, strm_url, provider="") · line 386</span>
-<p>Inserts a single movie. Idempotency check at line 397: looks for an
+<span class="fn-sig">_insert_movie(db, movie_data, strm_url, provider="") · line 324</span>
+<p>Inserts a single movie. Idempotency check at line 338: looks for an
 existing <code>files.idFile</code> joined with <code>movie.idFile</code> for
 this path+filename and bails if found. Title construction
 <code>[%s] %s % (PROVIDER_LABELS[provider], base_title)</code> gives the
@@ -319,7 +344,7 @@ expects), <code>videoversion</code> (Kodi 21 requirement), the genres via
 </div>
 
 <div class="fn">
-<span class="fn-sig">_insert_tvshow(db, show_dir, tv_data, provider="") · line 999 · returns (show_id, is_new)</span>
+<span class="fn-sig">_insert_tvshow(db, show_dir, tv_data, provider="") · line 521 · returns (show_id, is_new)</span>
 <p>The single most subtle function in the addon. Two prefix candidates:</p>
 <ul>
 <li><code>prefixed_name</code> — built from <em>TMDb's</em> canonical name
@@ -337,16 +362,15 @@ the original "<code>[C4] Buried</code>" row — its <code>idShow</code> ends
 up empty forever because every episode rows' <code>idShow</code> points at
 the new row.</p>
 
-<div class="callout warn"><span class="callout-title">TV show lookup must prefer <code>prefixed_dirname</code> first</span>
-<p>The primary lookup must be the show_dir-based name
-(<code>prefixed_dirname</code>) before the TMDb canonical name
-(<code>prefixed_name</code>). TMDb search re-ranks titles dynamically —
-when "Buried" is searched one day it can resolve to "Buried Hearts" and
-the next day to "Buried" (different shows). If we keyed off
-<code>prefixed_name</code> we would fragment a show's episodes across
-two <code>tvshow</code> rows over successive syncs. Keying off
-<code>prefixed_dirname</code> keeps the local show identity stable
-across re-ranks.</p>
+<div class="callout warn"><span class="callout-title">TV show lookup prefers <code>prefixed_dirname</code> before the TMDb canonical name</span>
+<p>New rows are matched by the score-based picker above. On <em>subsequent
+syncs</em> the lookup still must not key on the TMDb canonical name alone
+(<code>prefixed_name</code>) — TMDb's search relevance re-ranks similar-named
+siblings over time, so the same catalogue title could otherwise resolve to a
+different canonical name and fragment the show across two
+<code>tvshow</code> rows. Keying the existing-row lookup on the dir-name
+(<code>prefixed_dirname</code>) first keeps the local identity stable; the
+canonical name is only a fallback.</p>
 </div>
 
 <p>Besides the lookup order, this function also:</p>
@@ -379,8 +403,8 @@ pick up the wrapped form.</p>
 </div>
 
 <div class="fn">
-<span class="fn-sig">_insert_episode(db, show_id, season_id, season_num, ep_num, ep_data, strm_path, strm_filename, show_name="") · line 1118</span>
-<p>Inserts a single episode. Idempotency check at line 1114 by
+<span class="fn-sig">_insert_episode(db, show_id, season_id, season_num, ep_num, ep_data, strm_url, strm_filename="", show_name="") · line 625</span>
+<p>Inserts a single episode. Idempotency check at line 626 by
 <code>(idShow, c12=season, c13=episode)</code> triple. Builds
 <code>ep_c00</code> as <code>"Show Name - Episode Title"</code> when
 different, just like Kodi's own scraper does. Inserts into
@@ -396,8 +420,8 @@ URL — the same string that goes into <code>episode.c18</code>.
 There's no <code>?</code>-only truncation. The
 <code>_insert_episode</code> function picks
 <code>plugin_filename = strm_url</code> when <code>strm_url</code>
-starts with <code>plugin://</code> (the normal path — the
-<a href="strm-py.html">strm.py</a> URL builders always emit full
+starts with <code>plugin://</code> (the normal path — library_sync's
+own <code>_build_episode_strm_url</code> (referenced in <a href="strm-py.html">strm.py</a>, now moved inline) always emits full
 <code>plugin://plugin.video.easyplaytv/…</code> URLs), and only falls
 back to a placeholder <code>plugin://plugin.video.easyplaytv/?action=resolve_vod&provider=unknown&episode_id=0</code>
 when a non-<code>plugin://</code> value somehow reaches it
@@ -419,7 +443,7 @@ the URL will leak through.</p>
 </div>
 
 <div class="fn">
-<span class="fn-sig">_ensure_season(db, show_id, season_num, poster_path=None) · line 1190</span>
+<span class="fn-sig">_ensure_season(db, show_id, season_num, poster_path=None) · line 613</span>
 <p>Gets-or-creates a <code>seasons</code> row. Inserts poster art if TMDb
 returned a season poster.</p>
 </div>
@@ -427,119 +451,98 @@ returned a season poster.</p>
 <h2>State files</h2>
 
 <div class="fn">
-<span class="fn-sig">STATE_FILE = library_sync_state.json (movies) · SERIES_SYNC_STATE = series_sync_state.json (series)</span>
-<p>Two JSON state files, both in the addon profile dir. Shape:</p>
+<span class="fn-sig">library_sync_state.json (movies) · series_sync_state.json (series)</span>
+<p>Two JSON state files in <code>data_dir</code> (the addon profile dir for
+the Service addon, configured <code>data_dir</code> for standalone). Shape:</p>
 <pre><code>{
   "synced_titles": { "<safe_title>": {"tmdb_id": 123, "time": 1700000000.0} },
   "last_sync": 1700000000.0
 }</code></pre>
 <p>Read on every sync start, written every 10 movies / 5 shows during a
-sync. Lets the sync skip shows already processed in the current 6h window
-without re-fetching TMDb for them.</p>
+sync. <code>synced_titles</code>/<code>synced_shows</code> avoid re-fetching
+TMDb for shows the current pass already processed; the series file also
+carries <code>absent_shows</code> (the per-show consecutive-miss counter used
+by the absence sweep).</p>
 </div>
 
-<h2>Stale-title cleanup</h2>
+<h2>Stale-title cleanup (two cadences)</h2>
 
 <div class="fn">
-<span class="fn-sig">remove_stale_movies() · line 1215 · remove_stale_series() · line 1265</span>
-<p>Two-step GC:</p>
-<ol>
-<li>Read every EasyPlayTV-attached movie/tvshow row from the DB.</li>
-<li>Call the relevant <a href="strm-py.html"><code>strm._fetch_*</code></a>
-function to get the live catalog, build a set of currently-active URLs.</li>
-<li>Delete any DB row whose <code>strFilename</code> (movie) or
-<code>safe_filename(c00)</code> (tvshow) isn't in the active set.</li>
-</ol>
-<p>Deletes cascade through <code>art</code>, <code>uniqueid</code>,
-<code>genre_link</code>, <code>files</code>, <code>episode</code>,
-<code>seasons</code>, <code>tvshowlinkpath</code>, <code>tvshow</code>
-manually — Kodi doesn't FK these in modern schemas (looking at you,
-MyVideos131).</p>
-</div>
-
-<h2>Art backfill</h2>
-
-<div class="fn">
-<span class="fn-sig">backfill_series_art() · line 1315</span>
-<p>One-shot refresh for shows missing posters / fanart / genres / mpaa /
-premiered after a TMDb hiccup. Selects rows on plugin-or-disk paths that
-have a non-empty TMDb uniqueid <em>and</em> are missing art, then fetches
-the TMDb data and UPDATEs the missing columns. Logs every 50 rows so
-progress is visible in <code>kodi.log</code>.</p>
-</div>
-
-<h2>One-off maintenance helpers (still kept callable)</h2>
-
-<div class="fn">
-<span class="fn-sig">prefix_existing_movies() · line 1403 · prefix_existing_tvshows() · line 1449</span>
-<p>Run via <code>?action=prefix_titles</code> in
-<a href="default-py.html">default.py</a>. Retrofits the
-<code>[PROVIDER] Title</code> prefix onto rows that pre-date the
-convention (e.g. rows inserted before the provider label was being
-written into <code>c00</code>). <code>prefix_existing_tvshows</code> has
-a 3-tier matching strategy against <code>provider_map</code>:</p>
-<ol>
-<li>Exact <code>provider_map.get(title)</code> then
-<code>provider_map.get(safe_filename(title))</code>.</li>
-<li>Case-insensitive exact match via a pre-built lowercase-keyed dict —
-catches "800 Words" (Kodi c00) vs "800 words" (provider_map key).</li>
-<li>Longest-substring match — handles minor title variations where c00
-has had quotes added/removed by an earlier sync. Picks the <em>longest</em>
-matching key so "Above Suspicion" wins over "Suspicion" when matching
-"Above Suspicion".</li>
-</ol>
+<span class="fn-sig">_sweep_movies_fast(db, provider_filter, films) · line 1463 · _sweep_absent_shows(db, provider_filter, fresh_safe_titles, absent) · line 1420</span>
+<p>Runs on <em>every</em> sync pass. Movies and whole TV shows missing from
+the provider's current catalogue are removed, reusing the episode lists
+already fetched that pass (so the fast path costs nothing extra). A show is
+only deleted after <code>ABSENT_SHOW_THRESHOLD</code> (3) consecutive passes
+where it's missing — absence counts persist in
+<code>series_sync_state.json</code> and a reappearance resets them, guarding
+against transient upstream index gaps.</p>
 </div>
 
 <div class="fn">
-<span class="fn-sig">fix_sort_titles() · line 1523</span>
-<p>Sets <code>c15</code> = <code>c09</code> = base-name (prefix stripped) for
-prefixed tvshows. Sort titles without the prefix mean the user's "by title"
-library view is alphabetical by base name, not by provider.</p>
+<span class="fn-sig">sweep_stale(db, provider, data_dir) · line 1506 (cadence <code>stale_sweep_hours</code>)</span>
+<p>Slower pass that fetches each provider's complete current episode/movie
+id set upstream and deletes any library <code>files</code> /
+<code>episode</code> / <code>movie</code> row whose id is no longer present.
+Failsafe: if a provider's upstream set comes back empty, nothing is deleted
+that pass.</p>
+</div>
+
+<div class="fn">
+<span class="fn-sig">_sweep_episode(db, file_id) · line 1375 · _sweep_movie(db, movie_id, file_id) · line 1390 · _delete_tvshow_chain(db, show_id) · line 1399</span>
+<p>Deleting a row must cascade through every child table manually — Kodi
+doesn't FK these in modern schemas (MyVideos131 has no foreign keys). Each
+helper drops <code>art</code> / <code>uniqueid</code> / <code>genre_link</code>
+/ <code>countrylink</code> / <code>streamdetails</code> rows for the media
+entity, then the row itself (<code>files</code> too for episodes/movies).
+<code>_delete_tvshow_chain</code> loops the show's episodes (via
+<code>idFile</code>), deletes each episode's file + child rows, then seasons,
+tvshow art/uniqueids/genres, <code>tvshowlinkpath</code> and finally
+<code>tvshow</code>.</p>
+<p><strong>Caveat:</strong> the helpers hardcode <code>countrylink</code>,
+but modern Kodi schemas rename that table to <code>country_link</code>
+(MyVideos131). Where the table is absent that single DELETE raises 1146 — the
+per-sync sweeps wrap the chain in try/except so a sync completes (and the
+failure is logged) instead of aborting, at the cost of the affected
+show/episode rows surviving the pass. <code>_sweep_movie</code> is unaffected
+(it uses <code>genre_link</code>).</p>
 </div>
 
 <h2>The entry point</h2>
 
 <div class="fn">
-<span class="fn-sig">sync_provider(provider, force=False) · line 1555</span>
-<p>The function <a href="service-py.html"><code>service.py</code></a> calls.
-Branches:</p>
+<span class="fn-sig">sync_provider(db, provider, force=False, data_dir="") -> int · line 428</span>
+<p>The function the scheduler's
+<code>run_sync(provider)</code> calls. Branches on whether a single provider
+is named:</p>
 <ul>
-<li>If <code>provider</code> is given (the normal case from service.py):
-call <code>sync_series_direct(force=force, provider_filter=provider)</code>.</li>
-<li>If <code>provider</code> is empty (the unsynced "sync everything" path,
-not normally used by <a href="service-py.html">service.py</a> which always
-passes one provider):
-<code>remove_stale_movies()</code>, <code>remove_stale_series()</code>,
-<code>sync_movies_direct()</code>, <code>sync_series_direct(force=force)</code>.</li>
-<li>Always: <code>prefix_existing_tvshows()</code>, <code>fix_sort_titles()</code>,
-then <code>xbmc.executebuiltin('UpdateLibrary(video, "/home/osmc/.kodi/userdata/addon_data/plugin.video.easyplaytv/")')</code>.</li>
-<li>The <code>UpdateLibrary</code> call is targeted on the EasyPlayTV
-profile root so Kodi re-scans only our plugin-source path (and any
-un-excluded disk folders), not the entire library — avoids reviving
-TMDb scraper runs across unrelated sources on every 6h sync.</li>
-<li>Pops a Kodi notification: <em>"Sync done: +N movies, +N series."</em></li>
+<li>If <code>provider</code> is given (the normal scheduled case): run
+<code>_sync_series(provider_filter=provider)</code> then
+<code>_sync_movies(provider_filter=provider)</code> — never both at once;
+the scheduler runs providers one-after-another in a single thread.</li>
+<li>If <code>provider</code> is empty: <code>_sync_series()</code> +
+<code>_sync_movies()</code> over the full catalogue.</li>
+<li>The movie pass also triggers
+<code>_sweep_movies_fast</code> and the series pass
+<code>_sweep_absent_shows</code> (per-sync stale removal); the wider
+<code>sweep_stale</code> pass runs on its own slower cadence under the
+scheduler.</li>
+<li>Returns the combined count (movies + series synced) for the scheduler's
+log line.</li>
 </ul>
 </div>
 
 <h2>Startup path reconciliation</h2>
 
 <div class="fn">
-<span class="fn-sig">_sanitize_scraper_settings_xml(xml) · line 155</span>
-<p>Normalizes TMDb scraper strSettings XML: quotes unquoted attributes and
-forces <code>verboselog=false</code>. Used during sync to prevent the TMDb
-scraper from dumping 20K+ log lines per API call.</p>
-</div>
-
-<div class="callout warn"><span class="callout-title">Note on removed migration code</span>
-<p>The <code>migrate_to_plugin_paths()</code> and
-<code>_repair_scraper_path_settings()</code> functions were removed in v1.0.0.
-The migration was a startup-time reconciliation that ran on every boot to
-re-establish the <code>plugin://</code> path invariant. It was removed because
-it caused ~2.5 min startup delays on Pi by contending with Kodi's own
-boot-time DB connections. The DB is now maintained correctly by the sync
-engine and the <code>ensure_series_path_config()</code> guard at the start
-of each sync run.</p>
-</div>
+<span class="fn-sig">_ensure_path · _ensure_path_id · _sanitize_scraper_settings_xml · lines 503, 277, 490</span>
+<p>Path rows are reconciled lazily inside each sync pass — every call to
+<code>_sync_series</code> / <code>_sync_movies</code> starts by
+<code>_ensure_path</code>-ing its library root, so the
+<code>plugin://</code> invariant self-heals on the first run after a fresh
+install without any boot-time migration. The stale-art/maint helpers
+(<code>backfill_series_art</code>, <code>prefix_existing_tvshows</code>,
+<code>fix_sort_titles</code>) were dropped in the standalone-service split —
+the runtime inserts with the <code>[PROVIDER]</code> prefix directly.</p>
 </div>
 
 <section class="share-section">

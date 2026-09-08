@@ -78,10 +78,10 @@
 slugs and each provider's per-genre slugs. This is the single source of
 truth that prevents every consumer from hard-coding its own
 "films-on-itvx is <code>films</code>, films-on-stv is <code>movies</code>,
-films-on-bbc is <code>films</code>" mapping. The genres are used by
-<a href="strm-py.html"><code>strm._fetch_movies</code></a> and
-<code>_fetch_series_shows</code> to iterate every per-provider genre slug
-when aggregating the catalogue for sync.</p>
+films-on-bbc is <code>films</code>" mapping. The genres are used by the
+sync engine in <a href="library_sync-py.html">library_sync.py</a> to
+iterate every per-provider genre slug when aggregating the catalogue for
+sync.</p>
 
 <h2>UNIFIED_GENRES — 17 unified genres</h2>
 
@@ -141,10 +141,9 @@ with no filter. That's why Blaze appears with empty strings in
 <p>Two <code>set</code>s of unified-genre slugs used to decide whether a
 given tile's shows are movies or series. <code>MOVIE_GENRES = {"films"}</code>
 and <code>SERIES_GENRES</code> is everything else. Read by
-<a href="strm-py.html"><code>strm._fetch_movies</code></a> (which filters
-to the <code>films</code> slug only) and
-<a href="strm-py.html"><code>strm._fetch_series_shows</code></a>
-(which iterates everything except <code>films</code>).</p>
+<a href="library_sync-py.html">library_sync.py</a> (which filters
+movie sync to the <code>films</code> slug only and iterates everything
+except <code>films</code> for series).</p>
 </div>
 
 <h2>PROVIDER_LABELS</h2>

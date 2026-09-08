@@ -64,13 +64,19 @@
 <script>(function(){var fm=document.querySelector('[data-banner=fastmail]');var dd=document.querySelector('[data-banner=dynadot]');if(Math.random()<0.5){fm.hidden=true;dd.hidden=false}})();</script>
 
 <div class="crumbs"><a href="../index.html">Home</a> <span class="sep">/</span> Files <span class="sep">/</span> my5_vod.py</div>
-<h1>resources/lib/my5_vod.py <small>— My5 catalogue</small></h1>
+<h1>easyplaytv-service/…/providers/my5_vod.py <small>— My5 catalogue</small></h1>
+
+<div class="callout warn">
+<span class="callout-title">Also ships in the video addon — this page documents the runtime copy</span>
+<p>The full catalogue scraper ships in the shared runtime at <code>easyplaytv-service/src/easyplaytv_service/vod_sync/providers/my5_vod.py</code> (and the vendored copy inside <code>service.easyplaytv</code>). The video addon keeps a smaller <code>resources/lib/my5_vod.py</code> (list_seasons / list_episodes only) used directly by the addon's browse screens; the functions below with line numbers refer to the runtime copy.</p>
+</div>
 
 <div class="file-meta">
-<span><strong>Path</strong> <code>/resources/lib/my5_vod.py</code></span>
-<span><strong>Lines</strong> 150</span>
+<span><strong>Path</strong> <code>easyplaytv-service/src/easyplaytv_service/vod_sync/providers/my5_vod.py</code></span>
+<span><strong>Lines</strong> 149</span>
 <span><strong>Type</strong> catalogue scraper (clean JSON API)</span>
-<span><strong>← called by</strong> <a href="strm-py.html">strm._fetch_*</a>, <a href="library_sync-py.html">library_sync</a> (episode fetch), <a href="my5-py.html">my5._resolve_episode_guid</a></span>
+<span><strong>← called by</strong> <a href="library_sync-py.html">library_sync.py</a> via <code>_provider_module("my5_vod")</code>, <code>providers/__init__.py</code></span>
+<span><strong>→ calls</strong> corona.channel5.com JSON endpoints</span>
 </div>
 
 <h2>Role</h2>
@@ -80,7 +86,7 @@ scrapers: pure JSON, no HTML scraping, no auth.</p>
 
 <h2>Constants</h2>
 <div class="fn">
-<span class="fn-sig">CORONA_URL = "https://corona.channel5.com/" · URL_GENRES · URL_SHOWS · URL_SEASONS · URL_EPISODES · lines 6-10</span>
+<span class="fn-sig">CORONA_URL = "https://corona.channel5.com/" · URL_GENRES · URL_SHOWS · URL_SEASONS · URL_EPISODES · lines 13-17</span>
 <p>Endpoint roots. <code>URL_SHOWS = CORONA_URL + "shows/search.json"</code>;
 <code>URL_SEASONS = CORONA_URL + "shows/%s/seasons.json"</code> (one
 substitution for f_name); <code>URL_EPISODES =
@@ -88,7 +94,7 @@ CORONA_URL + "shows/%s/seasons/%s/episodes.json"</code> (two substitutions:
 f_name and season_number).</p>
 </div>
 <div class="fn">
-<span class="fn-sig">SHOW_PARAMS = {"platform": "my5desktop", "friendly": "1"} · line 14</span>
+<span class="fn-sig">SHOW_PARAMS = {"platform": "my5desktop", "friendly": "1"} · line 21</span>
 <p>Query-string params applied to every API call. <code>platform</code>
 is the same id <a href="my5-py.html">my5.py</a>'s Cassie uses
 (<code>my5desktopng</code> is the equivalent platform ID over there;
@@ -97,18 +103,18 @@ for "friendly" string ids per show (the <em>f_name</em> slugs the resolver
 uses) instead of opaque GUIDs.</p>
 </div>
 <div class="fn">
-<span class="fn-sig">GENRE_LABELS = {"Film":"Films", "Drama":"Drama", "Entertainment":"Entertainment", "Documentary":"Documentaries", "Sport":"Sport", "Soap":"Soaps", "milkshake!":"Kids"} · lines 16-24</span>
+<span class="fn-sig">GENRE_LABELS = {"Film":"Films", "Drama":"Drama", "Entertainment":"Entertainment", "Documentary":"Documentaries", "Sport":"Sport", "Soap":"Soaps", "milkshake!":"Kids"} · lines 23-28</span>
 <p>My5's own genre names → addon display labels. Used inside
 <code>list_genres</code>.</p>
 </div>
 
 <h2>Helpers</h2>
 <div class="fn">
-<span class="fn-sig">_api_get(url, params=None) · line 27</span>
+<span class="fn-sig">_api_get(url, params=None) · line 34</span>
 <p>gzip-aware JSON fetch.</p>
 </div>
 <div class="fn">
-<span class="fn-sig">_safe_url_part(s) · line 87</span>
+<span class="fn-sig">_safe_url_part(s) · line 89</span>
 <p>URL-encodes a path segment for inclusion in a My5 API URL. f_names and
 season numbers occasionally contain stray whitespace, slashes, or
 non-ASCII characters (e.g. <em>"milkshake"</em> shows with Latin-1
@@ -118,14 +124,14 @@ URL has no spaces or unreserved chars.</p>
 
 <h2>Listing functions</h2>
 <div class="fn">
-<span class="fn-sig">list_genres() · line 40</span>
+<span class="fn-sig">list_genres() · line 46</span>
 <p>Returns genre dicts from the clean My5 list, with labels mapped via
 <code>GENRE_LABELS</code>. Filters to entries that are plain strings —
 some entries come back as objects and we skip those (older My5 entries
 with deprecated metadata).</p>
 </div>
 <div class="fn">
-<span class="fn-sig">list_shows(genre_id, offset=0, limit=40) → tuple[shows, total_entries] · line 52</span>
+<span class="fn-sig">list_shows(genre_id, offset=0, limit=40) → tuple[shows, total_entries] · line 58</span>
 <p>The search endpoint with offset/limit pagination. Returns the show list
 plus the total number of entries in the genre (so the caller knows when
 to stop iterating). Each show dict has <em>f_name</em>, <em>title</em>,
@@ -133,7 +139,7 @@ to stop iterating). Each show dict has <em>f_name</em>, <em>title</em>,
 flag indicating single-episode programmes (films).</p>
 </div>
 <div class="fn">
-<span class="fn-sig">list_seasons(f_name) · line 61</span>
+<span class="fn-sig">list_seasons(f_name) · line 67</span>
 <p>Lists the seasons for a show f_name. Strips stray whitespace from each
 season number (some My5 entries carry <em>"2 "</em> with a trailing space
 which produces malformed URLs like <code>/seasons/2 /episodes.json</code>
@@ -143,7 +149,7 @@ seasons are returned (covers standalone shows that don't expose a season
 explicitly).</p>
 </div>
 <div class="fn">
-<span class="fn-sig">list_episodes(f_name, season_number) · line 94</span>
+<span class="fn-sig">list_episodes(f_name, season_number) · line 93</span>
 <p>The per-season episode list. Each episode dict includes
 <em>episode_id</em> (the GUID starting with "C" that
 <a href="my5-py.html">my5.py:_fetch_cassie</a> needs), <em>f_name</em>
@@ -152,7 +158,7 @@ identifier), <em>title</em>, <em>image</em>, <em>episode_number</em>,
 <em>series_number</em>.</p>
 </div>
 <div class="fn">
-<span class="fn-sig">get_standalone_episode_id(f_name) · (helper)</span>
+<span class="fn-sig">get_standalone_episode_id(f_name) · line 120</span>
 <p>For standalone movies (a f_name that's actually a single-episode
 programme rather than a series) — finds the GUID that my5.py needs to
 make the Cassie call. Walks the seasons/episodes lists under the hood.

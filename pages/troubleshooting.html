@@ -99,12 +99,13 @@ thread pick up <code>_sync_db</code> reintroduces the corruption.</p>
 <p><strong>Cause:</strong> Kodi's TMDB scanner recursing into the addon's
 plugin URL path row, or into a disk-folder path row that hasn't been
 marked <code>exclude=1</code>.</p>
-<p><strong>Fix:</strong> ensure
-<a href="../files/library_sync-py.html">library_sync.ensure_series_path_config</a>
-has run (it's called at the start of every <code>sync_series_direct</code>
-run). If duplicate rows already exist, run <code>?action=prefix_titles</code>
-from the UI to retrofit <code>[PROVIDER]</code> prefixes — see the
-<code>prefix_existing_tvshows</code> function.</p>
+<p><strong>Fix:</strong> the sync's path reconciliation
+(<code>_ensure_path</code> in library_sync) creates the series root with
+<code>exclude=1</code> on the first run, so no new duplicates should appear
+going forward. Remove any already-created duplicate rows (rows the scanner
+made, without the <code>[PROVIDER]</code> prefix) and let the next sync
+rebuild the prefixed ones — the library sync is insert-only, so correcting
+wrong rows means deleting them and letting the scheduler rebuild.</p>
 </div>
 
 <div class="callout warn">
@@ -114,10 +115,10 @@ threw an exception (transient HTTP failure or partial outage). The sync
 insert guard skips shows with no episodes, but if the fetch fails the
 show stays out of the library until the next sync slot.</p>
 <p><strong>Fix:</strong>
-<a href="../files/library_sync-py.html">sync_series_direct</a> fetches
+<a href="../files/library_sync-py.html">_sync_series</a> fetches
 episodes <em>before</em> calling <code>_insert_tvshow</code>. If the
-fetch fails the show is simply skipped on this run and retried next 6h
-slot.</p>
+fetch fails the show is simply skipped on this run and retried on the
+next scheduled pass.</p>
 </div>
 
 <div class="callout warn">
@@ -127,14 +128,14 @@ library with poster and metadata but zero episodes underneath.</p>
 <p><strong>Cause:</strong> the rows were inserted by a sync run whose
 subsequent episode fetch failed partway through — the show exists but the
 episode rows were never written.</p>
-<p><strong>Fix:</strong> run <em>?action=backfill_art</em> from the UI
-(it doesn't add episodes but matches shows with valid TMDb ids and
-clears some metadata); the next sync will re-fetch episodes. For
-stubborn cases drop and re-sync the specific show: delete from
+<p><strong>Fix:</strong> the sync no longer inserts empty tvshow rows
+(current <code>_sync_series</code> fetch-first ordering prevents them), so
+these are legacy rows from an older run. Delete the show and let the next
+scheduled sync rebuild it from scratch: delete from
 <code>tvshow</code> WHERE idShow = <N>; delete from
 <code>tvshowlinkpath</code>, <code>genre_link</code>, <code>uniqueid</code>,
-<code>art</code> with the same idShow; then trigger a sync for that
-provider.</p>
+<code>art</code>, <code>seasons</code>, <code>episode</code> with the same
+idShow/files; then trigger a sync for that provider.</p>
 </div>
 
 <div class="callout warn">
@@ -142,14 +143,15 @@ provider.</p>
 <p><strong>Cause:</strong> STV returns episodes with
 <code>episode_number=0</code> when <code>playerSeries</code> is null
 (no per-episode metadata). The
-<a href="../files/library_sync-py.html">sync_series_direct</a> insert
-loop drops episode_number=0 via the <code>if en_int < 1: continue</code>
+<a href="../files/library_sync-py.html">_sync_series</a> insert loop
+drops <code>episode_number=0</code> via the <code>if en_int < 1: continue</code>
 guard, so documentaries and entire programmes without per-episode index
 info (Coronation Street, Emmerdale daily strips) would be missing from
 the library.</p>
-<p><strong>Fix:</strong> a renumber pre-pass in sync_series_direct at
-lines 858–888 sequentially renumbers episode_number=0 episodes from 1
-within their season block before the insert loop runs. If season is also
+<p><strong>Fix:</strong> a renumber pre-pass in _sync_series at
+lines 1090–1112 groups episodes by season, finds the set of already-used
+episode numbers ≥1, and renumbers zero-numbered episodes to the next
+available slot within their season block. If season is also
 0/missing, it's bumped to 1 so the show appears as Season 1 rather than
 the Kodi specials block (S00).</p>
 </div>
@@ -161,14 +163,15 @@ siblings dynamically. C4's <em>Buried</em> → TMDb can return <em>Buried Hearts
 with a different tmdb_id on a different day. Each subsequent sync resolves
 the same title to a different canonical name and inserts episodes into the
 new row, fragmenting one show across multiple <code>tvshow</code> rows.</p>
-<p><strong>Fix:</strong>
-<a href="../files/library_sync-py.html">_insert_tvshow</a> prefers the
-<code>[PROVIDER] <show_dir></code> (the local safe_title dir-name
-key) over the <code>[PROVIDER] <TMDb canonical name></code>
-when looking up an existing show. The primary lookup is the dir-name
-one; the TMDb canonical name is only used as a fallback if no dir-name
-match is found. This keeps the local show identity stable across TMDb
-re-ranks.</p>
+<p><strong>Fix (two layers):</strong> the TMDb disambiguation scorer
+(<code>_pick_tmdb_tv_result</code>) now ranks new-row candidates by
+title-similarity first (token Jaccard ×100), with year and overview as
+tie-breaks — so <em>Buried</em> (title similarity 1.0) beats <em>Buried Hearts</em>
+(0.29) when the query is "Buried". On <em>subsequent</em> syncs,
+<a href="../files/library_sync-py.html">_insert_tvshow</a> looks up
+existing rows by the dir-name (<code>prefixed_dirname</code>) first, falling
+back to the TMDb canonical name. This keeps the local show identity stable
+even if TMDb's search re-ranks the title on a later pass.</p>
 </div>
 
 <div class="callout warn">

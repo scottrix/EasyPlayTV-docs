@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<script>/* gcanonical-redirect */(function(){var p=location.pathname,q=location.search,h=location.hash,m=/^(.*)\/index\.html$/.exec(p);if(m){location.replace(m[1]+"/"+q+h);return}if(!p.endsWith("/")&&!/\.[a-z0-9]{1,10}$/i.test(p)){location.replace(p+".html"+q+h)}})();</script>
+<title>Changelog &amp; upgrades — EasyPlayTV docs</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="../assets/style.css">
+<script src="../assets/nav.js" defer></script>
+<meta name="description" content="EasyPlayTV release changelog and upgrade notes: versions, backwards-compat steps, and database maintenance.">
+<meta name="author" content="Scott Rix">
+<meta name="robots" content="index, follow">
+<link rel="canonical" href="https://scottrix.github.io/EasyPlayTV-docs/pages/changelog.html">
+<meta property="og:title" content="Changelog &amp; upgrades — EasyPlayTV docs">
+<meta property="og:description" content="EasyPlayTV release changelog and upgrade notes: versions, backwards-compat steps, and database maintenance.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://scottrix.github.io/EasyPlayTV-docs/pages/changelog.html">
+<meta property="og:site_name" content="EasyPlayTV docs">
+<meta property="og:locale" content="en_US">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Changelog &amp; upgrades — EasyPlayTV docs">
+<meta name="twitter:description" content="EasyPlayTV release changelog and upgrade notes: versions, backwards-compat steps, and database maintenance.">
+</head>
+<body data-page="changelog">
+<a class="skip-link" href="#main">Skip to content</a>
+<header class="site-header">
+  <div class="header-content">
+    <a href="https://scottrix.github.io/EasyPlayTV-docs/" class="logo">&#127916; EasyPlayTV docs</a>
+    <nav class="nav">
+      <a href="https://scottrix.github.io/">Scottrix</a>
+      <a href="../index.html">Home</a>
+      <a href="../pages/installation.html">Installation</a>
+      <a href="../pages/troubleshooting.html">Troubleshooting</a>
+    </nav>
+    <div class="header-actions">
+      <button id="theme-toggle" class="theme-btn" title="Toggle theme">&#127769;</button>
+      <button id="mobile-menu-btn" class="mobile-menu-btn">&#9776;</button>
+    </div>
+  </div>
+</header>
+
+<div class="mobile-nav" id="mobile-nav">
+  <div class="mobile-nav-header">
+    <span class="logo">&#127916; EasyPlayTV docs</span>
+    <button id="close-mobile" class="close-btn">&#10005;</button>
+  </div>
+  <nav class="mobile-nav-links">
+    <a href="https://scottrix.github.io/">Scottrix</a>
+    <a href="../index.html">Home</a>
+    <a href="../pages/installation.html">Installation</a>
+    <a href="../pages/troubleshooting.html">Troubleshooting</a>
+  </nav>
+</div>
+<div class="overlay" id="overlay"></div>
+
+<div class="layout">
+<nav class="sidebar"></nav>
+<main id="main">
+
+<div class="disclaimer-banner"><strong>Disclaimer:</strong> This documentation is provided for convenience and may contain errors. Always verify information against the official Kodi and provider documentation. <a href="mailto:easyplaytv@scott.scottrix.co.uk">Report issues</a>.</div>
+
+<a class="fastmail-topbar" data-banner="fastmail" href="https://join.fastmail.com/0d63b2d52105" target="_blank" rel="noopener"><img src="../FM Billboard 970x250.png" alt="Fastmail" loading="lazy"></a>
+<a class="fastmail-topbar" data-banner="dynadot" href="https://www.dynadot.com/?ref=scottrix" target="_blank" rel="nofollow noopener" hidden><img src="../dynadot-banner.jpg" alt="Dynadot — register a new domain, web hosting, SSL" loading="lazy" onerror="this.parentElement.style.display='none';document.querySelector('[data-banner=fastmail]').hidden=false"></a>
+<script>(function(){var fm=document.querySelector('[data-banner=fastmail]');var dd=document.querySelector('[data-banner=dynadot]');if(Math.random()<0.5){fm.hidden=true;dd.hidden=false}})();</script>
+
+<div class="crumbs"><a href="../index.html">Home</a> <span class="sep">/</span> Changelog &amp; upgrades</div>
+<h1>Changelog &amp; upgrades</h1>
+
+<p>Release history and anything you need to do when moving between versions.
+New installs can ignore the upgrade notes — they only matter when you already
+have an older EasyPlayTV database.</p>
+
+<h2>v1.3.0 — 2026-09-05</h2>
+<ul>
+<li><strong>3-package split:</strong> video addon is playback-only; the Service
+addon (<code>service.easyplaytv</code>) and the standalone
+(<code>easyplaytv-service</code>) share the <code>easyplaytv_service</code>
+runtime for PVR generation + library sync.</li>
+<li><strong>Client/server PVR:</strong> the Service addon is always the PVR
+server; client boxes run only the video addon and fetch PVR files over HTTP.</li>
+<li><strong>Sequential batch sync:</strong> providers sync one-after-another,
+then the PVR (channels + EPG) refreshes, then the cycle repeats — capped by
+the sync interval. No per-provider staggered timers.</li>
+<li><strong>Two-cadence stale sweep:</strong> movies and whole TV shows are
+removed every sync; episodes inside still-present shows on a slower cadence.
+Both are failsafe-skipped when a provider's upstream fetch comes back empty.</li>
+<li><strong>TMDb disambiguation:</strong> library-sync lookups match results
+against provider metadata (year, description, cast/credit names) instead of
+trusting the bare-title first result. Fixes wrong matches like
+<em>War</em> resolving to <em>War Machine</em> or <em>Bird</em> to
+<em>Bird Box</em>. Remediation for existing bad rows: delete them and let
+the scheduler rebuild (library sync is insert-only).</li>
+<li><strong>Radio EPG</strong> for the 44 BBC radio stations, from BBC Sounds
+schedules (5 Global stations stay EPG-less).</li>
+<li>Removed all manual-force-sync entry points (HTTP <code>POST /sync/vod/*</code>,
+<code>force_sync_&lt;provider&gt;</code> markers, <code>--sync</code> CLI).</li>
+</ul>
+
+<h2>v1.2.0 — 2026-08-30</h2>
+<ul>
+<li>Stubbed 4 unreliable free-IPTV channels for graceful failure:
+Great! Action, Pop Max, Talking Pictures TV, Together TV — greyed out in the
+PVR guide with a "not implemented" notification.</li>
+<li><strong>Native Pluto TV resolver</strong> — 13 channels.</li>
+<li>Additional channels: Great! TV live, UKTV VOD provider, 9 clear Samsung
+TV Plus channels, ITV Quiz via ITVX (ITVBe slug), WildEarth / 5 Trucking
+Hell / France 24.</li>
+<li>Removed <code>+1</code> timeshift channels and the plusone resolver.</li>
+<li>Freely LCN normalisation to Freely numbering; region setting for
+channel lineups.</li>
+<li>ITVX fix for intermittent 403s on CDN segments (lost audio).
+PVR setup fix for Kodi 20+ (patch <code>instance-settings-1.xml</code>).
+Addon XML validation added to the release workflow.</li>
+</ul>
+
+<h2>v1.1.2 — 2026-08-22</h2>
+<ul>
+<li>Formal Freely channel lineup with region setting (London / Central
+Scotland); LCNs normalised to Freely numbering.</li>
+<li>Fixed invalid <code>addon.xml</code>; added XML validation to the release workflow.</li>
+<li>CI falls back to automatic token when the release token is unset.</li>
+</ul>
+
+<h2>v1.1.1 — 2026-08-20</h2>
+<ul>
+<li>STV EPG fix (Freeview-EPG mapping).</li>
+</ul>
+
+<h2>v1.1.0 — 2026-08-20</h2>
+<ul>
+<li><strong>PVR integration:</strong> live TV in Kodi's native TV section
+(channels + EPG).</li>
+<li><strong>C4 auto re-login</strong> when the session expires.</li>
+<li>Single-threaded service operation.</li>
+</ul>
+
+<h2>v1.0.0 — 2026-08-17</h2>
+<ul>
+<li>Initial release: live TV + VOD playback with sign-in for ITVX, C4, My5.</li>
+</ul>
+
+<h2 id="upgrade-notes">Upgrade notes</h2>
+
+<div class="callout warn">
+<span class="callout-title">Wrong TMDb matches from older releases (v1.3.0 and earlier)</span>
+<p>TMDb disambiguation in <a href="../files/library_sync-py.html">library_sync</a>
+uses a title-similarity scorer (token Jaccard, year tie-break, exact-title
+first). Releases before the scorer just took TMDb's first search result, so
+some titles were inserted against the wrong TMDb id — e.g. ITVX's
+<em>War</em> (2007) could resolve to <em>Avengers: Infinity War</em>, or a
+documentary could shadow its titular film.</p>
+<p><strong>New titles sync correctly with no action.</strong> Because library
+sync is insert-only (rows are never re-matched), correcting an already-wrong
+row means deleting it and letting the scheduler rebuild it. Delete
+<code>tvshow</code> / <code>movie</code> rows whose
+<code>uniqueid</code> (<code>type='tmdb'</code>) holds the wrong id; the next
+scheduled pass re-inserts them with the scorer. Stop the Kodi service before
+deleting so a concurrent sync can't race the rebuild.</p>
+</div>
+
+<div class="callout warn">
+<span class="callout-title">Stale-sweep: what actually happens</span>
+<p>The two-cadence sweep (<code>_sweep_movies_fast</code> per sync,
+<code>_sweep_absent_shows</code> per sync, <code>sweep_stale</code> on the
+slow cadence) deletes through child tables (<code>streamdetails</code>,
+<code>art</code>, <code>uniqueid</code>, <code>genre_link</code>,
+<code>countrylink</code>, <code>seasons</code>, <code>tvshowlinkpath</code>,
+<code>files</code>, <code>episode</code>, <code>movie</code>, <code>tvshow</code>)
+rather than relying on Kodi FKs. One caveat: on modern Kodi schemas
+(MyVideos131) the media link table is <code>country_link</code>, while the
+delete helper still targets <code>countrylink</code> — where the table is
+missing, that DELETE raises 1146. The per-sync sweeps wrap the chain in a
+try/except, so the sync completes and the failure is logged rather than
+aborting; the affected show/episode rows are simply not removed that pass.
+Fast-path <em>movie</em> sweeps are unaffected (they touch
+<code>genre_link</code>, not <code>countrylink</code>).</p>
+</div>
+
+<div class="callout note">
+<span class="callout-title">Re-registration after a fresh unzip</span>
+<p>If you install the addon by unzipping over a previous copy rather than via
+the ZIP installer, Kodi may prune the addon at startup. Re-run the manual
+registration steps in <a href="../pages/installation.html">Installation</a> —
+DB insert into <code>Addons33.db</code> (<code>addons</code> +
+<code>installed</code>), <code>strings.xml</code> from
+<code>strings.po</code>, and strip the <code>xbmc.addon.settings</code>
+extension point from <code>addon.xml</code>.</p>
+</div>
+
+<div class="callout note">
+<span class="callout-title">Service addon vendors the runtime</span>
+<p><code>service.easyplaytv/lib/easyplaytv_service/</code> is a byte-copy of
+the standalone's <code>easyplaytv-service/src/easyplaytv_service/</code>.
+When upgrading the standalone, the Service addon must be upgraded too so both
+run the same runtime version.</p>
+</div>
+
+  <h2>Share this page</h2>
+  <a class="share-btn" href="https://www.linkedin.com/sharing/share-offsite/?url=https%3A//scottrix.github.io/EasyPlayTV-docs/pages/changelog.html" target="_blank" rel="noopener">Share on LinkedIn</a>
+  <a class="share-btn" href="https://www.facebook.com/sharer/sharer.php?u=https%3A//scottrix.github.io/EasyPlayTV-docs/pages/changelog.html" target="_blank" rel="noopener">Share on Facebook</a>
+  <a class="share-btn" href="https://twitter.com/intent/tweet?url=https%3A//scottrix.github.io/EasyPlayTV-docs/pages/changelog.html&text=EasyPlayTV" target="_blank" rel="noopener">Share on X</a>
+
+</main>
+</div>
+</body>
+</html>
